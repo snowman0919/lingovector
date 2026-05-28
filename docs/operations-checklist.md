@@ -63,7 +63,9 @@ Use this for staging rehearsal and every beta deploy window. Do not deploy from 
 
 ## Smoke Tests
 
-- [ ] Local/staging dev-token smoke if `DEV_AUTH=true` in rehearsal only: `npm run test:api-smoke`
+- [ ] Staging smoke without token: `STAGING_API_BASE_URL=https://YOUR_STAGING_API_HOST npm run test:staging-smoke`
+- [ ] Staging smoke with short-lived operator token when available: `STAGING_API_BASE_URL=... STAGING_AUTH_TOKEN=... npm run test:staging-smoke`
+- [ ] Local development dev-token smoke only when running a separate dev API with `DEV_AUTH=true`: `npm run test:api-smoke`
 - [ ] TTS smoke: `npm run test:tts-smoke`
 - [ ] Learning-quality fixtures: `npm run test:learning-quality`
 - [ ] arXiv smoke: `npm run test:arxiv-smoke`

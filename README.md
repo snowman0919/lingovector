@@ -208,7 +208,7 @@ Use [docs/beta-checklist.md](docs/beta-checklist.md) before inviting students.
 
 ## Deployment Rehearsal
 
-Use [docs/deployment.md](docs/deployment.md) for the Linux server, reverse proxy or Cloudflare Tunnel, Docker rehearsal, migration, logging, storage, and rollback runbook. Use [docs/operations-checklist.md](docs/operations-checklist.md) during each beta deploy window.
+Use [docs/staging-runbook.md](docs/staging-runbook.md) for production-like staging rehearsal. Use [docs/deployment.md](docs/deployment.md) for the Linux server, reverse proxy or Cloudflare Tunnel, Docker rehearsal, migration, logging, storage, and rollback runbook. Use [docs/operations-checklist.md](docs/operations-checklist.md) during each beta deploy window.
 
 ## Implemented MVP Features
 

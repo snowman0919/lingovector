@@ -18,6 +18,7 @@
     "ops:cleanup-local-output": "bash scripts/cleanup-local-output.sh",
     "test:api": "cargo test --workspace",
     "test:api-smoke": "node scripts/api-smoke.mjs",
+    "test:staging-smoke": "node scripts/staging-smoke.mjs",
     "test:tts-smoke": "node scripts/tts-smoke.mjs",
     "test:arxiv-smoke": "node scripts/arxiv-smoke.mjs",
     "test:learning-quality": "node scripts/learning-quality-fixtures.mjs",

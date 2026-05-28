@@ -41,7 +41,10 @@ impl Config {
         let jwt_secret = raw_jwt_secret
             .clone()
             .unwrap_or_else(|| "dev-only-change-me".to_string());
-        let environment = get("ENVIRONMENT").unwrap_or_else(|| "development".to_string());
+        let environment = get("ENVIRONMENT")
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| get("APP_ENV").filter(|value| !value.trim().is_empty()))
+            .unwrap_or_else(|| "development".to_string());
         let raw_allowed_email_domain =
             get("ALLOWED_EMAIL_DOMAIN").filter(|value| !value.trim().is_empty());
         let allowed_email_domain = raw_allowed_email_domain
@@ -128,29 +131,33 @@ fn validate_production_config(check: ProductionConfigCheck<'_>) -> anyhow::Resul
         return Ok(());
     }
     if check.dev_auth {
-        anyhow::bail!("DEV_AUTH cannot be enabled when ENVIRONMENT is production");
+        anyhow::bail!("DEV_AUTH cannot be enabled when ENVIRONMENT or APP_ENV is production-like");
     }
     if check.raw_database_url.is_none() {
-        anyhow::bail!("DATABASE_URL is required when ENVIRONMENT is production");
+        anyhow::bail!("DATABASE_URL is required when ENVIRONMENT or APP_ENV is production-like");
     }
     match check.raw_jwt_secret {
         Some(secret) if secret != "dev-only-change-me" && secret.len() >= 32 => {}
         Some(_) => anyhow::bail!(
-            "JWT_SECRET must be a non-default value with at least 32 characters when ENVIRONMENT is production"
+            "JWT_SECRET must be a non-default value with at least 32 characters when ENVIRONMENT or APP_ENV is production-like"
         ),
-        None => anyhow::bail!("JWT_SECRET is required when ENVIRONMENT is production"),
+        None => anyhow::bail!("JWT_SECRET is required when ENVIRONMENT or APP_ENV is production-like"),
     }
     if check.google_client_id.is_none() {
-        anyhow::bail!("GOOGLE_CLIENT_ID is required when ENVIRONMENT is production");
+        anyhow::bail!(
+            "GOOGLE_CLIENT_ID is required when ENVIRONMENT or APP_ENV is production-like"
+        );
     }
     if check.raw_allowed_email_domain.is_none() {
-        anyhow::bail!("ALLOWED_EMAIL_DOMAIN is required when ENVIRONMENT is production");
+        anyhow::bail!(
+            "ALLOWED_EMAIL_DOMAIN is required when ENVIRONMENT or APP_ENV is production-like"
+        );
     }
     if check.allowed_email_domain != "dimigo.hs.kr" {
         anyhow::bail!("ALLOWED_EMAIL_DOMAIN must be dimigo.hs.kr for the school-internal beta");
     }
     if check.raw_cors_origins.is_none() || check.cors_origins.is_empty() {
-        anyhow::bail!("CORS_ORIGINS is required when ENVIRONMENT is production");
+        anyhow::bail!("CORS_ORIGINS is required when ENVIRONMENT or APP_ENV is production-like");
     }
     for origin in check.cors_origins {
         if origin == "*"
@@ -159,7 +166,7 @@ fn validate_production_config(check: ProductionConfigCheck<'_>) -> anyhow::Resul
             || !origin.starts_with("https://")
         {
             anyhow::bail!(
-                "CORS_ORIGINS must contain explicit https production origins when ENVIRONMENT is production"
+                "CORS_ORIGINS must contain explicit https origins when ENVIRONMENT or APP_ENV is production-like"
             );
         }
     }
@@ -250,7 +257,7 @@ mod tests {
             }
         }
         let err = config_from(&values).unwrap_err().to_string();
-        assert!(err.contains("CORS_ORIGINS must contain explicit https production origins"));
+        assert!(err.contains("CORS_ORIGINS must contain explicit https origins"));
     }
 
     #[test]
@@ -269,5 +276,36 @@ mod tests {
         values.push(("DIAGNOSTICS_ENABLED", "true"));
         let config = config_from(&values).unwrap();
         assert!(config.diagnostics_allowed());
+    }
+
+    #[test]
+    fn app_env_staging_uses_production_like_validation() {
+        let mut values = production_values();
+        values.retain(|(key, _)| *key != "ENVIRONMENT");
+        values.push(("APP_ENV", "staging"));
+        let config = config_from(&values).unwrap();
+        assert_eq!(config.environment, "staging");
+        assert!(!config.is_development());
+        assert!(!config.dev_auth);
+        assert!(!config.diagnostics_allowed());
+    }
+
+    #[test]
+    fn app_env_staging_rejects_dev_auth() {
+        let mut values = production_values();
+        values.retain(|(key, _)| *key != "ENVIRONMENT");
+        values.push(("APP_ENV", "staging"));
+        values.push(("DEV_AUTH", "true"));
+        let err = config_from(&values).unwrap_err().to_string();
+        assert!(err.contains("DEV_AUTH cannot be enabled"));
+    }
+
+    #[test]
+    fn app_env_staging_requires_database_url() {
+        let mut values = production_values();
+        values.retain(|(key, _)| *key != "ENVIRONMENT" && *key != "DATABASE_URL");
+        values.push(("APP_ENV", "staging"));
+        let err = config_from(&values).unwrap_err().to_string();
+        assert!(err.contains("DATABASE_URL is required"));
     }
 }
