@@ -25,7 +25,6 @@ Prerequisites: Docker Desktop running, Rust stable, Node.js 22+ or newer, and np
 
    ```bash
    npm run dev:db
-   docker compose ps
    ```
 
 3. Install frontend dependencies:
@@ -44,6 +43,12 @@ Prerequisites: Docker Desktop running, Rust stable, Node.js 22+ or newer, and np
 
    ```bash
    npm run dev:health
+   ```
+
+   To exercise the main backend flow through HTTP while the API is running:
+
+   ```bash
+   npm run test:api-smoke
    ```
 
 6. Start the frontend:
@@ -108,6 +113,7 @@ Never commit real secrets.
 npm run format:api
 npm run clippy:api
 npm run test:api
+npm run test:api-smoke
 npm run test:web
 npm run lint
 npm --workspace apps/web run typecheck

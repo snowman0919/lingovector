@@ -47,18 +47,26 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
-async fn health(State(state): State<AppState>) -> Json<Value> {
+async fn health(State(state): State<AppState>) -> (StatusCode, Json<Value>) {
     let database_ready = sqlx::query_scalar::<_, i32>("SELECT 1")
         .fetch_one(&state.pool)
         .await
         .map(|value| value == 1)
         .unwrap_or(false);
-    Json(json!({
-        "ok": database_ready,
-        "service": "lingovector-api",
-        "version": "0.3.0",
-        "database": {"ready": database_ready}
-    }))
+    let status = if database_ready {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (
+        status,
+        Json(json!({
+            "ok": database_ready,
+            "service": "lingovector-api",
+            "version": "0.3.0",
+            "database": {"ready": database_ready}
+        })),
+    )
 }
 
 async fn login(

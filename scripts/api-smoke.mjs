@@ -1,0 +1,104 @@
+const API_BASE = process.env.API_BASE ?? "http://127.0.0.1:8080";
+
+async function request(path, options = {}, token) {
+  const headers = new Headers(options.headers);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (!(options.body instanceof FormData) && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const text = await response.text();
+  const body = text ? JSON.parse(text) : null;
+  if (!response.ok) {
+    throw new Error(`${path} failed with ${response.status}: ${text}`);
+  }
+  return body;
+}
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+const health = await request("/health");
+assert(health.ok === true && health.database?.ready === true, "health endpoint did not report DB ready");
+
+const login = await request("/auth/google", {
+  method: "POST",
+  body: JSON.stringify({ id_token: "dev:student@dimigo.hs.kr" }),
+});
+const token = login.access_token;
+assert(token, "login did not return access token");
+
+const passage = await request(
+  "/passages/analyze",
+  {
+    method: "POST",
+    body: JSON.stringify({
+      title: "Smoke passage",
+      text: "Although students can translate difficult passages, they often miss the logic. Real fluency starts when they explain the idea in English.",
+    }),
+  },
+  token,
+);
+assert(passage.sentences?.length >= 2, "passage analysis did not split sentences");
+
+const word = await request(
+  "/words/inspect",
+  {
+    method: "POST",
+    body: JSON.stringify({ word: "fluency", context: passage.sentences[1].text }),
+  },
+  token,
+);
+assert(word.word === "fluency", "word inspection failed");
+
+const tts = await request(
+  "/tts",
+  { method: "POST", body: JSON.stringify({ text: passage.sentences[0].text }) },
+  token,
+);
+assert(tts.audio_url && tts.spoken_words?.length > 0, "tts did not return audio and timing metadata");
+
+const voiceForm = new FormData();
+voiceForm.append("name", "Smoke voice");
+voiceForm.append("consent_text", "I consent to using this voice sample only for my Lingovector study voice profile.");
+voiceForm.append("file", new Blob([new Uint8Array(128).fill(7)], { type: "audio/webm" }), "voice.webm");
+const voice = await request("/voices/upload", { method: "POST", body: voiceForm }, token);
+assert(voice.id && voice.consent_version, "voice upload did not return consent metadata");
+
+const deleted = await request(`/voices/${voice.id}`, { method: "DELETE" }, token);
+assert(deleted.deleted === true, "voice delete failed");
+
+const pronunciationForm = new FormData();
+pronunciationForm.append("target_text", passage.sentences[0].text);
+pronunciationForm.append("sentence_id", passage.sentences[0].id);
+pronunciationForm.append("file", new Blob([new Uint8Array(256).fill(3)], { type: "audio/webm" }), "pronunciation.webm");
+const pronunciation = await request("/pronunciation/score", { method: "POST", body: pronunciationForm }, token);
+assert(pronunciation.score?.overall, "pronunciation score missing overall");
+
+const prompt = await request(
+  "/writing/prompts",
+  { method: "POST", body: JSON.stringify({ passage_id: passage.id }) },
+  token,
+);
+const writing = await request(
+  "/writing/submit",
+  {
+    method: "POST",
+    body: JSON.stringify({
+      passage_id: passage.id,
+      prompt: prompt.prompt,
+      response: "I think that it is very important thing because students need many informations about logic.",
+    }),
+  },
+  token,
+);
+assert(Object.keys(writing.scores ?? {}).length === 7, "writing score does not have seven dimensions");
+assert(writing.original && writing.revised, "writing before/after fields missing");
+
+const papers = await request("/arxiv/recommendations", {}, token);
+assert(Array.isArray(papers) && papers.length >= 6, "arXiv recommendations missing categories");
+const opened = await request("/arxiv/open", { method: "POST", body: JSON.stringify({ id: papers[0].id }) }, token);
+assert(opened.source === "arxiv" && opened.sentences?.length > 0, "arXiv open did not analyze abstract");
+
+console.log("api smoke checks passed");
