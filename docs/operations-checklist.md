@@ -9,6 +9,7 @@ Use this for staging rehearsal and every beta deploy window. Do not deploy from 
 - [ ] Review [docs/deployment.md](deployment.md).
 - [ ] Confirm no secrets are committed.
 - [ ] Confirm provider usage and expected cost/risk for this deploy.
+- [ ] Confirm Korean UI policy is preserved: UI copy is Korean, but English passages, examples, definitions, and student writing remain English.
 - [ ] Confirm a rollback owner and communication channel.
 
 ## Environment Validation
@@ -80,8 +81,10 @@ Use this for staging rehearsal and every beta deploy window. Do not deploy from 
 ## Beta User Test
 
 - [ ] Student signs in with `@dimigo.hs.kr`
+- [ ] Main student UI labels and instructions are Korean
 - [ ] Student pastes a short passage
 - [ ] Sentence analysis appears
+- [ ] Simple English explanation appears before detailed Korean support
 - [ ] Student clicks a word and sees word details
 - [ ] TTS plays or mock status is understood by operators
 - [ ] Voice consent copy is visible

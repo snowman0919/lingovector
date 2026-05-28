@@ -7,8 +7,10 @@ This document describes a production deployment rehearsal for Lingovector. It is
 - Next.js frontend runs as a production Node server on `127.0.0.1:3000`.
 - Rust Axum API runs on `127.0.0.1:8080`.
 - PostgreSQL runs as a managed database or a server-local PostgreSQL service/container.
-- Runtime storage stores generated TTS audio and uploaded voice samples under `STORAGE_DIR`; object storage should replace local disk before larger use.
+- Runtime storage stores generated TTS audio and uploaded voice samples under `STORAGE_DIR`; local disk is acceptable for a small rehearsal, but object storage should replace local disk before larger use.
 - Nginx, Caddy, another reverse proxy, or Cloudflare Tunnel terminates HTTPS and routes traffic to the local frontend and API.
+
+Student-facing UI is Korean for the Dimigo beta. English passages, English examples, definitions, generated Simple English explanations, paper titles/abstracts, and student-written English remain in English so Lingovector teaches English-first thinking with Korean support instead of translation memorization.
 
 Expected public routes:
 
@@ -81,10 +83,12 @@ Production startup fails fast when required env vars are missing or unsafe. `DEV
 3. Build production images:
 
    ```bash
-docker compose --env-file .env.production -f docker-compose.production.example.yml build
-```
+   docker compose --env-file .env.production -f docker-compose.production.example.yml build
+   ```
 
 The compose file reads service env from `.env.production` by default. For a dry config check against the committed template, set `LINGOVECTOR_ENV_FILE=.env.production.example` and provide placeholder shell values for required substitutions.
+
+The example compose file includes PostgreSQL for rehearsal. If production uses an external managed database, remove or ignore the `postgres` service, remove `api.depends_on.postgres`, and set `DATABASE_URL` to the external database over TLS if supported by the provider.
 
 4. Start the rehearsal stack:
 
@@ -180,6 +184,8 @@ Runtime storage:
 - Generated TTS and pronunciation audio: `STORAGE_DIR/audio`
 - Local verification fixture output: `local-output/learning-quality`
 
+For a single-server beta, mount `STORAGE_DIR` as a persistent volume owned by the API runtime user. For object storage, keep the same logical separation for voice uploads and generated audio, and document the bucket retention/delete process before enabling it for students.
+
 Inspect local usage:
 
 ```bash
@@ -239,7 +245,7 @@ CORS_ORIGINS=https://YOUR_BETA_FRONTEND_HOST
 NEXT_PUBLIC_API_BASE_URL=https://YOUR_BETA_API_HOST
 ```
 
-HTTPS is required for production Google sign-in and microphone recording.
+HTTPS is required for production Google sign-in and microphone recording. Google OAuth authorized JavaScript origins must include `https://YOUR_BETA_FRONTEND_HOST`. If a redirect-based OAuth flow is later added, register a production redirect URI such as `https://YOUR_BETA_FRONTEND_HOST/auth/callback` and keep the local redirect URI separate.
 
 ## Cloudflare Tunnel Notes
 
@@ -265,6 +271,7 @@ Use the same `CORS_ORIGINS` and `NEXT_PUBLIC_API_BASE_URL` values as the public 
 - [ ] `.env.production` exists only on the server.
 - [ ] `ENVIRONMENT=production`.
 - [ ] `DEV_AUTH=false`.
+- [ ] Student UI is Korean and English learning materials remain English-first.
 - [ ] Google OAuth client IDs match frontend/backend env.
 - [ ] `CORS_ORIGINS` is the exact HTTPS frontend origin.
 - [ ] Database backup is complete.
