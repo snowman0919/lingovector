@@ -85,7 +85,7 @@ pub struct WordInspectRequest {
     pub context: String,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WordInspectResponse {
     pub word: String,
     pub english_definition: String,
@@ -109,7 +109,7 @@ pub struct TtsResponse {
     pub spoken_words: Vec<SpokenWord>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SpokenWord {
     pub word: String,
     pub start_ms: u32,
@@ -122,6 +122,14 @@ pub struct VoiceProfileResponse {
     pub provider: String,
     pub provider_voice_id: String,
     pub consent_text: String,
+    pub consent_version: String,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DeleteVoiceResponse {
+    pub id: Uuid,
+    pub deleted: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -152,6 +160,7 @@ pub struct WritingResponse {
     pub id: Uuid,
     pub scores: Value,
     pub korean_like_translation: Value,
+    pub original: String,
     pub revised: String,
     pub explanation: String,
 }

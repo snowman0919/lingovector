@@ -1,5 +1,9 @@
 use async_trait::async_trait;
+use quick_xml::de::from_str;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::{
@@ -78,6 +82,160 @@ pub trait PronunciationProvider: Send + Sync {
 #[async_trait]
 pub trait ArxivProvider: Send + Sync {
     async fn recommendations(&self) -> AppResult<Vec<ArxivRecommendation>>;
+    async fn find(&self, id: &str) -> AppResult<Option<ArxivRecommendation>> {
+        Ok(self
+            .recommendations()
+            .await?
+            .into_iter()
+            .find(|paper| paper.id == id))
+    }
+}
+
+#[derive(Clone)]
+pub struct OpenAiCompatibleLlmProvider {
+    pub api_url: String,
+    pub api_key: Option<String>,
+    pub model: String,
+    pub fallback: MockLlmProvider,
+}
+
+#[derive(Serialize)]
+struct ChatRequest<'a> {
+    model: &'a str,
+    messages: Vec<ChatMessage<'a>>,
+    temperature: f32,
+    response_format: Value,
+}
+
+#[derive(Serialize)]
+struct ChatMessage<'a> {
+    role: &'a str,
+    content: String,
+}
+
+#[derive(Deserialize)]
+struct ChatResponse {
+    choices: Vec<ChatChoice>,
+}
+
+#[derive(Deserialize)]
+struct ChatChoice {
+    message: ChatChoiceMessage,
+}
+
+#[derive(Deserialize)]
+struct ChatChoiceMessage {
+    content: String,
+}
+
+#[async_trait]
+impl LlmProvider for OpenAiCompatibleLlmProvider {
+    async fn analyze_passage(&self, text: &str) -> AppResult<Vec<AnalyzedSentence>> {
+        let schema = sentence_analysis_schema();
+        let prompt = format!(
+            "Analyze this passage for Korean high school students. Return strict JSON matching this schema: {schema}. Passage: {text}"
+        );
+        match self.chat_json(prompt).await.and_then(parse_sentence_analysis) {
+            Ok(sentences) if !sentences.is_empty() => Ok(sentences),
+            Ok(_) => self.fallback.analyze_passage(text).await,
+            Err(_) => self.fallback.analyze_passage(text).await,
+        }
+    }
+
+    async fn inspect_word(
+        &self,
+        word: &str,
+        context: &str,
+        familiarity: i32,
+    ) -> AppResult<WordInspectResponse> {
+        let schema = word_analysis_schema();
+        let prompt = format!(
+            "Analyze the English word for a Korean high school student. Avoid forced etymology. Return strict JSON matching this schema: {schema}. Word: {word}. Context: {context}"
+        );
+        match self.chat_json(prompt).await.and_then(|value| {
+            serde_json::from_value::<WordInspectResponse>(value)
+                .map_err(|err| AppError::Provider(format!("invalid word JSON: {err}")))
+        }) {
+            Ok(mut response) => {
+                response.familiarity = familiarity;
+                Ok(response)
+            }
+            Err(_) => self.fallback.inspect_word(word, context, familiarity).await,
+        }
+    }
+
+    async fn writing_prompt(&self, passage: &str) -> AppResult<String> {
+        let prompt = format!(
+            "Create one English writing prompt from this passage for a Korean high school student. Return JSON {{\"prompt\":\"...\"}} only. Passage: {passage}"
+        );
+        match self.chat_json(prompt).await {
+            Ok(value) => value
+                .get("prompt")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+                .ok_or_else(|| AppError::Provider("invalid writing prompt JSON".to_string()))
+                .or_else(|_| self.fallback.writing_prompt(passage).await),
+            Err(_) => self.fallback.writing_prompt(passage).await,
+        }
+    }
+
+    async fn score_writing(&self, prompt: &str, response: &str) -> AppResult<WritingFeedback> {
+        let schema = writing_feedback_schema();
+        let request = format!(
+            "Score this English response. Return strict JSON matching this schema: {schema}. Prompt: {prompt}. Response: {response}"
+        );
+        match self
+            .chat_json(request)
+            .await
+            .and_then(parse_writing_feedback)
+        {
+            Ok(feedback) => Ok(feedback),
+            Err(_) => self.fallback.score_writing(prompt, response).await,
+        }
+    }
+}
+
+impl OpenAiCompatibleLlmProvider {
+    async fn chat_json(&self, prompt: String) -> AppResult<Value> {
+        let request = ChatRequest {
+            model: &self.model,
+            temperature: 0.2,
+            response_format: json!({"type": "json_object"}),
+            messages: vec![
+                ChatMessage {
+                    role: "system",
+                    content: "You are Lingovector. Return valid JSON only. Do not include markdown.".to_string(),
+                },
+                ChatMessage {
+                    role: "user",
+                    content: prompt,
+                },
+            ],
+        };
+        let mut builder = reqwest::Client::new().post(&self.api_url).json(&request);
+        if let Some(api_key) = &self.api_key {
+            builder = builder.bearer_auth(api_key);
+        }
+        let response: ChatResponse = builder
+            .send()
+            .await
+            .map_err(|err| AppError::Provider(err.to_string()))?
+            .error_for_status()
+            .map_err(|err| AppError::Provider(err.to_string()))?
+            .json()
+            .await
+            .map_err(|err| AppError::Provider(err.to_string()))?;
+        let content = response
+            .choices
+            .first()
+            .ok_or_else(|| AppError::Provider("LLM returned no choices".to_string()))?
+            .message
+            .content
+            .trim()
+            .to_string();
+        serde_json::from_str(&content)
+            .map_err(|err| AppError::Provider(format!("LLM returned invalid JSON: {err}")))
+    }
 }
 
 #[derive(Clone, Default)]
@@ -160,7 +318,7 @@ impl LlmProvider for MockLlmProvider {
         let words = tokenize(response);
         let length_score = ((words.len() as i32).min(160) / 20 + 2).clamp(1, 9);
         let korean_like = detect_korean_like(response);
-        let scores = json!({
+        let scores = normalize_writing_scores(json!({
             "Grammar": length_score,
             "Vocabulary": (length_score + 1).min(9),
             "Nuance": if korean_like.as_array().unwrap().is_empty() { 7 } else { 5 },
@@ -168,7 +326,7 @@ impl LlmProvider for MockLlmProvider {
             "Structure": if response.len() > 240 { 7 } else { 5 },
             "Clarity": 7,
             "Naturalness": if korean_like.as_array().unwrap().is_empty() { 7 } else { 5 }
-        });
+        }));
         Ok(WritingFeedback {
             scores,
             korean_like_translation: korean_like,
@@ -201,6 +359,9 @@ impl TtsProvider for MockTtsProvider {
 #[derive(Clone)]
 pub struct SupertoneTtsProvider {
     pub local_url: Option<String>,
+    pub api_key: Option<String>,
+    pub base_url: String,
+    pub fallback: MockTtsProvider,
 }
 
 #[async_trait]
@@ -211,9 +372,9 @@ impl TtsProvider for SupertoneTtsProvider {
         voice_id: Option<&str>,
         storage: &LocalStorage,
     ) -> AppResult<TtsAudio> {
-        if let Some(url) = &self.local_url {
+        let result = if let Some(url) = &self.local_url {
             let body = json!({ "text": text, "voice_id": voice_id });
-            let bytes = reqwest::Client::new()
+            reqwest::Client::new()
                 .post(url)
                 .json(&body)
                 .send()
@@ -223,15 +384,38 @@ impl TtsProvider for SupertoneTtsProvider {
                 .map_err(|err| AppError::Provider(err.to_string()))?
                 .bytes()
                 .await
-                .map_err(|err| AppError::Provider(err.to_string()))?;
-            let path = storage.save_bytes("audio", "supertone.wav", &bytes).await?;
-            return Ok(TtsAudio {
-                provider: "supertone-local".to_string(),
-                storage_path: path,
-                spoken_words: timed_words(text),
-            });
+                .map(|bytes| ("supertone-local".to_string(), bytes))
+                .map_err(|err| AppError::Provider(err.to_string()))
+        } else if let Some(api_key) = &self.api_key {
+            let endpoint = format!("{}/v1/text-to-speech", self.base_url.trim_end_matches('/'));
+            let body = json!({ "text": text, "voice_id": voice_id.unwrap_or("default"), "model": "supertonic-3" });
+            reqwest::Client::new()
+                .post(endpoint)
+                .bearer_auth(api_key)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|err| AppError::Provider(err.to_string()))?
+                .error_for_status()
+                .map_err(|err| AppError::Provider(err.to_string()))?
+                .bytes()
+                .await
+                .map(|bytes| ("supertone-api".to_string(), bytes))
+                .map_err(|err| AppError::Provider(err.to_string()))
+        } else {
+            return self.fallback.synthesize(text, voice_id, storage).await;
+        };
+        match result {
+            Ok((provider, bytes)) => {
+                let path = storage.save_bytes("audio", "supertone.wav", &bytes).await?;
+                Ok(TtsAudio {
+                    provider,
+                    storage_path: path,
+                    spoken_words: timed_words(text),
+                })
+            }
+            Err(_) => self.fallback.synthesize(text, voice_id, storage).await,
         }
-        MockTtsProvider.synthesize(text, voice_id, storage).await
     }
 }
 
@@ -255,6 +439,94 @@ impl VoiceProvider for MockVoiceProvider {
             provider: "mock".to_string(),
             provider_voice_id: format!("mock-voice-{}", Uuid::new_v4()),
         })
+    }
+}
+
+#[derive(Clone)]
+pub struct SupertoneVoiceProvider {
+    pub local_url: Option<String>,
+    pub api_key: Option<String>,
+    pub base_url: String,
+    pub fallback: MockVoiceProvider,
+}
+
+#[async_trait]
+impl VoiceProvider for SupertoneVoiceProvider {
+    async fn clone_voice(&self, bytes: &[u8], consent_text: &str) -> AppResult<VoiceClone> {
+        if bytes.len() < 32 {
+            return Err(AppError::BadRequest(
+                "voice sample is too small".to_string(),
+            ));
+        }
+        if !consent_text.to_lowercase().contains("consent") && !consent_text.contains("동의") {
+            return Err(AppError::BadRequest(
+                "voice cloning consent text is required".to_string(),
+            ));
+        }
+        let result = if let Some(url) = &self.local_url {
+            let form = reqwest::multipart::Form::new()
+                .text("consent_text", consent_text.to_string())
+                .part(
+                    "file",
+                    reqwest::multipart::Part::bytes(bytes.to_vec()).file_name("voice-sample.webm"),
+                );
+            reqwest::Client::new()
+                .post(url)
+                .multipart(form)
+                .send()
+                .await
+                .map_err(|err| AppError::Provider(err.to_string()))?
+                .error_for_status()
+                .map_err(|err| AppError::Provider(err.to_string()))?
+                .json::<Value>()
+                .await
+                .map_err(|err| AppError::Provider(err.to_string()))
+        } else if let Some(api_key) = &self.api_key {
+            let endpoint = format!("{}/v1/voices", self.base_url.trim_end_matches('/'));
+            let form = reqwest::multipart::Form::new()
+                .text("consent_text", consent_text.to_string())
+                .text("model", "supertonic-3")
+                .part(
+                    "file",
+                    reqwest::multipart::Part::bytes(bytes.to_vec()).file_name("voice-sample.webm"),
+                );
+            reqwest::Client::new()
+                .post(endpoint)
+                .bearer_auth(api_key)
+                .multipart(form)
+                .send()
+                .await
+                .map_err(|err| AppError::Provider(err.to_string()))?
+                .error_for_status()
+                .map_err(|err| AppError::Provider(err.to_string()))?
+                .json::<Value>()
+                .await
+                .map_err(|err| AppError::Provider(err.to_string()))
+        } else {
+            return self.fallback.clone_voice(bytes, consent_text).await;
+        };
+
+        match result {
+            Ok(value) => {
+                let provider_voice_id = value
+                    .get("voice_id")
+                    .or_else(|| value.get("id"))
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| AppError::Provider("voice provider did not return voice_id".to_string()));
+                match provider_voice_id {
+                    Ok(provider_voice_id) => Ok(VoiceClone {
+                        provider: if self.local_url.is_some() {
+                            "supertone-local".to_string()
+                        } else {
+                            "supertone-api".to_string()
+                        },
+                        provider_voice_id: provider_voice_id.to_string(),
+                    }),
+                    Err(_) => self.fallback.clone_voice(bytes, consent_text).await,
+                }
+            }
+            Err(_) => self.fallback.clone_voice(bytes, consent_text).await,
+        }
     }
 }
 
@@ -283,6 +555,41 @@ impl PronunciationProvider for MockPronunciationProvider {
     }
 }
 
+#[derive(Clone)]
+pub struct HttpPronunciationProvider {
+    pub url: String,
+    pub fallback: MockPronunciationProvider,
+}
+
+#[async_trait]
+impl PronunciationProvider for HttpPronunciationProvider {
+    async fn score(&self, target_text: &str, audio_bytes: &[u8]) -> AppResult<Value> {
+        let form = reqwest::multipart::Form::new()
+            .text("target_text", target_text.to_string())
+            .part(
+                "file",
+                reqwest::multipart::Part::bytes(audio_bytes.to_vec())
+                    .file_name("pronunciation.webm"),
+            );
+        match reqwest::Client::new()
+            .post(&self.url)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|err| AppError::Provider(err.to_string()))
+        {
+            Ok(response) => match response.error_for_status() {
+                Ok(response) => match response.json::<Value>().await {
+                    Ok(value) => Ok(normalize_pronunciation_score(value, target_text)),
+                    Err(_) => self.fallback.score(target_text, audio_bytes).await,
+                },
+                Err(_) => self.fallback.score(target_text, audio_bytes).await,
+            },
+            Err(_) => self.fallback.score(target_text, audio_bytes).await,
+        }
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct MockArxivProvider;
 
@@ -293,8 +600,148 @@ impl ArxivProvider for MockArxivProvider {
     }
 }
 
-pub fn find_arxiv(id: &str) -> Option<ArxivRecommendation> {
-    sample_arxiv().into_iter().find(|paper| paper.id == id)
+pub struct RealArxivProvider {
+    cache: RwLock<Option<(Instant, Vec<ArxivRecommendation>)>>,
+    fallback: MockArxivProvider,
+}
+
+impl RealArxivProvider {
+    pub fn new() -> Self {
+        Self {
+            cache: RwLock::new(None),
+            fallback: MockArxivProvider,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ArxivFeed {
+    #[serde(rename = "entry", default)]
+    entries: Vec<ArxivEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ArxivEntry {
+    id: String,
+    title: String,
+    summary: String,
+}
+
+#[async_trait]
+impl ArxivProvider for RealArxivProvider {
+    async fn recommendations(&self) -> AppResult<Vec<ArxivRecommendation>> {
+        {
+            let cache = self.cache.read().await;
+            if let Some((created, papers)) = &*cache {
+                if created.elapsed() < Duration::from_secs(60 * 60) {
+                    return Ok(papers.clone());
+                }
+            }
+        }
+        let fetched = match fetch_real_arxiv().await {
+            Ok(papers) if !papers.is_empty() => papers,
+            _ => self.fallback.recommendations().await?,
+        };
+        *self.cache.write().await = Some((Instant::now(), fetched.clone()));
+        Ok(fetched)
+    }
+}
+
+async fn fetch_real_arxiv() -> AppResult<Vec<ArxivRecommendation>> {
+    let categories = [
+        ("Security", "cat:cs.CR"),
+        ("AI", "cat:cs.AI"),
+        ("Robotics", "cat:cs.RO"),
+        ("Physics", "cat:physics.gen-ph"),
+        ("Chemistry", "cat:physics.chem-ph"),
+        ("Biology", "cat:q-bio.BM"),
+    ];
+    let client = reqwest::Client::new();
+    let mut papers = Vec::new();
+    for (category, query) in categories {
+        let xml = client
+            .get("https://export.arxiv.org/api/query")
+            .query(&[
+                ("search_query", query),
+                ("start", "0"),
+                ("max_results", "1"),
+                ("sortBy", "submittedDate"),
+                ("sortOrder", "descending"),
+            ])
+            .send()
+            .await
+            .map_err(|err| AppError::Provider(err.to_string()))?
+            .error_for_status()
+            .map_err(|err| AppError::Provider(err.to_string()))?
+            .text()
+            .await
+            .map_err(|err| AppError::Provider(err.to_string()))?;
+        let feed: ArxivFeed = from_str(&xml)
+            .map_err(|err| AppError::Provider(format!("arXiv XML parse failed: {err}")))?;
+        if let Some(entry) = feed.entries.into_iter().next() {
+            let title = clean_space(&entry.title);
+            let abstract_text = clean_space(&entry.summary);
+            papers.push(ArxivRecommendation {
+                id: entry
+                    .id
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&entry.id)
+                    .replace('.', "-"),
+                category: category.to_string(),
+                difficulty: estimate_difficulty(&abstract_text),
+                reason: format!(
+                    "A recent {category} abstract with useful academic vocabulary and title/abstract-only study scope."
+                ),
+                key_vocabulary: extract_key_vocabulary(&abstract_text),
+                writing_prompt: format!(
+                    "In 120-180 words, explain the core problem in this {category} abstract and why it matters."
+                ),
+                title,
+                abstract_text,
+            });
+        }
+    }
+    Ok(papers)
+}
+
+fn clean_space(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn estimate_difficulty(abstract_text: &str) -> String {
+    let words = tokenize(abstract_text);
+    let avg_word_len = words.iter().map(|word| word.len()).sum::<usize>() / words.len().max(1);
+    if avg_word_len > 8 {
+        "Hard".to_string()
+    } else if avg_word_len > 6 {
+        "Medium-Hard".to_string()
+    } else {
+        "Medium".to_string()
+    }
+}
+
+fn extract_key_vocabulary(abstract_text: &str) -> Vec<String> {
+    let mut words = tokenize(abstract_text)
+        .into_iter()
+        .map(|word| word.to_lowercase())
+        .filter(|word| word.len() > 7)
+        .filter(|word| {
+            ![
+                "between",
+                "through",
+                "different",
+                "because",
+                "however",
+                "results",
+                "present",
+            ]
+            .contains(&word.as_str())
+        })
+        .collect::<Vec<_>>();
+    words.sort();
+    words.dedup();
+    words.into_iter().take(5).collect()
 }
 
 fn split_sentences(text: &str) -> Vec<String> {
@@ -338,6 +785,140 @@ fn timed_words(text: &str) -> Vec<SpokenWord> {
         })
         .collect()
 }
+
+fn sentence_analysis_schema() -> &'static str {
+    r#"{"sentences":[{"text":"string","simple_english":"string","korean_detail":"string","grammar":{"main_clause":"string","tense_or_modality":"string","note":"string"},"chunks":[{"label":"string","text":"string","function":"string"}],"pos":[{"token":"string","label":"NOUN|VERB|ADJ|ADV|DET|CONJ|PREP|PRON|OTHER","start":0,"end":1}],"structure":[{"label":"string","text":"string","role":"string"}],"logic_relation":"string"}]}"#
+}
+
+fn word_analysis_schema() -> &'static str {
+    r#"{"word":"string","english_definition":"string","core_meaning":"string","contextual_meaning":"string","korean_support":"string","morphology":{"confidence":"low|medium|high","analysis":[],"note":"string"},"familiarity":0}"#
+}
+
+fn writing_feedback_schema() -> &'static str {
+    r#"{"scores":{"Grammar":0,"Vocabulary":0,"Nuance":0,"Logic":0,"Structure":0,"Clarity":0,"Naturalness":0},"korean_like_translation":[{"phrase":"string","suggestion":"string"}],"revised":"string","explanation":"string"}"#
+}
+
+fn parse_sentence_analysis(value: Value) -> AppResult<Vec<AnalyzedSentence>> {
+    let list = value
+        .get("sentences")
+        .and_then(Value::as_array)
+        .ok_or_else(|| AppError::Provider("sentence analysis JSON missing sentences".to_string()))?;
+    list.iter()
+        .enumerate()
+        .map(|(index, item)| {
+            let text = required_string(item, "text")?;
+            let simple_english = required_string(item, "simple_english")?;
+            let korean_detail = required_string(item, "korean_detail")?;
+            let logic_relation = required_string(item, "logic_relation")?;
+            let grammar = item
+                .get("grammar")
+                .filter(|value| value.is_object())
+                .cloned()
+                .ok_or_else(|| AppError::Provider("grammar must be an object".to_string()))?;
+            let chunks = item
+                .get("chunks")
+                .filter(|value| value.is_array())
+                .cloned()
+                .ok_or_else(|| AppError::Provider("chunks must be an array".to_string()))?;
+            let pos = item
+                .get("pos")
+                .filter(|value| value.is_array())
+                .cloned()
+                .ok_or_else(|| AppError::Provider("pos must be an array".to_string()))?;
+            let structure = item
+                .get("structure")
+                .filter(|value| value.is_array())
+                .cloned()
+                .ok_or_else(|| AppError::Provider("structure must be an array".to_string()))?;
+            Ok(AnalyzedSentence {
+                index: index as i32,
+                text,
+                simple_english,
+                korean_detail,
+                grammar,
+                chunks,
+                pos,
+                structure,
+                logic_relation,
+            })
+        })
+        .collect()
+}
+
+fn parse_writing_feedback(value: Value) -> AppResult<WritingFeedback> {
+    let scores = normalize_writing_scores(
+        value
+            .get("scores")
+            .cloned()
+            .ok_or_else(|| AppError::Provider("writing feedback missing scores".to_string()))?,
+    );
+    let korean_like_translation = value
+        .get("korean_like_translation")
+        .filter(|value| value.is_array())
+        .cloned()
+        .unwrap_or_else(|| json!([]));
+    let revised = required_string(&value, "revised")?;
+    let explanation = required_string(&value, "explanation")?;
+    Ok(WritingFeedback {
+        scores,
+        korean_like_translation,
+        revised,
+        explanation,
+    })
+}
+
+fn required_string(value: &Value, key: &str) -> AppResult<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| AppError::Provider(format!("missing string field {key}")))
+}
+
+fn normalize_writing_scores(value: Value) -> Value {
+    let mut scores = serde_json::Map::new();
+    for key in WRITING_SCORE_KEYS {
+        let raw = value.get(key).and_then(Value::as_i64).unwrap_or(5);
+        scores.insert(key.to_string(), json!(raw.clamp(1, 10)));
+    }
+    Value::Object(scores)
+}
+
+fn normalize_pronunciation_score(value: Value, target_text: &str) -> Value {
+    let mut score = serde_json::Map::new();
+    for key in ["pronunciation", "stress", "intonation", "speed", "rhythm", "overall"] {
+        let raw = value.get(key).and_then(Value::as_i64).unwrap_or(70);
+        score.insert(key.to_string(), json!(raw.clamp(0, 100)));
+    }
+    score.insert("target_text".to_string(), json!(target_text));
+    score.insert(
+        "feedback".to_string(),
+        value.get("feedback")
+            .filter(|feedback| feedback.is_array())
+            .cloned()
+            .unwrap_or_else(|| json!([])),
+    );
+    score.insert(
+        "provider".to_string(),
+        value.get("provider")
+            .and_then(Value::as_str)
+            .unwrap_or("http")
+            .into(),
+    );
+    Value::Object(score)
+}
+
+const WRITING_SCORE_KEYS: [&str; 7] = [
+    "Grammar",
+    "Vocabulary",
+    "Nuance",
+    "Logic",
+    "Structure",
+    "Clarity",
+    "Naturalness",
+];
 
 fn guess_pos(word: &str) -> &'static str {
     let lower = word.to_lowercase();

@@ -20,6 +20,7 @@ use crate::{
 pub struct Claims {
     pub sub: String,
     pub email: String,
+    pub hd: Option<String>,
     pub exp: usize,
 }
 
@@ -32,6 +33,7 @@ struct GoogleTokenInfo {
     name: String,
     picture: Option<String>,
     aud: Option<String>,
+    hd: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -40,6 +42,7 @@ pub struct GoogleClaims {
     pub email_verified: bool,
     pub name: String,
     pub picture: Option<String>,
+    pub hosted_domain: Option<String>,
 }
 
 pub fn create_access_token(user: &UserDto, config: &Config) -> AppResult<String> {
@@ -47,6 +50,7 @@ pub fn create_access_token(user: &UserDto, config: &Config) -> AppResult<String>
     let claims = Claims {
         sub: user.id.to_string(),
         email: user.email.clone(),
+        hd: user.email.split('@').nth(1).map(ToOwned::to_owned),
         exp,
     };
     encode(
@@ -59,9 +63,9 @@ pub fn create_access_token(user: &UserDto, config: &Config) -> AppResult<String>
 
 pub async fn verify_google_id_token(id_token: &str, config: &Config) -> AppResult<GoogleClaims> {
     if let Some(email) = id_token.strip_prefix("dev:") {
-        if !config.is_development() {
+        if !config.dev_auth {
             return Err(AppError::Forbidden(
-                "development login token is disabled".to_string(),
+                "development login token is disabled; set DEV_AUTH=true for local dev".to_string(),
             ));
         }
         let email = if email.trim().is_empty() {
@@ -78,6 +82,7 @@ pub async fn verify_google_id_token(id_token: &str, config: &Config) -> AppResul
             email,
             email_verified: true,
             picture: None,
+            hosted_domain: Some(config.allowed_email_domain.clone()),
         });
     }
 
@@ -105,6 +110,7 @@ pub async fn verify_google_id_token(id_token: &str, config: &Config) -> AppResul
         email_verified: token_info.email_verified == "true",
         name: token_info.name,
         picture: token_info.picture,
+        hosted_domain: token_info.hd,
     })
 }
 
@@ -114,14 +120,31 @@ pub fn require_allowed_email(claims: &GoogleClaims, config: &Config) -> AppResul
             "Google account email must be verified".to_string(),
         ));
     }
-    let allowed_suffix = format!("@{}", config.allowed_email_domain);
+    let allowed_domain = config.allowed_email_domain.to_lowercase();
+    let allowed_suffix = format!("@{}", allowed_domain);
     if !claims.email.to_lowercase().ends_with(&allowed_suffix) {
         return Err(AppError::Forbidden(format!(
             "only verified {} accounts are allowed",
             allowed_suffix
         )));
     }
-    Ok(())
+    match claims.hosted_domain.as_deref() {
+        Some(hd) if hd.eq_ignore_ascii_case(&allowed_domain) => Ok(()),
+        Some(_) => Err(AppError::Forbidden(format!(
+            "Google hosted domain must be {}",
+            allowed_domain
+        ))),
+        None => {
+            if claims.email.to_lowercase().ends_with(&allowed_suffix) {
+                Ok(())
+            } else {
+                Err(AppError::Forbidden(format!(
+                    "Google hosted domain must be {}",
+                    allowed_domain
+                )))
+            }
+        }
+    }
 }
 
 pub async fn upsert_user(pool: &PgPool, claims: &GoogleClaims) -> AppResult<UserDto> {
@@ -145,6 +168,76 @@ pub async fn upsert_user(pool: &PgPool, claims: &GoogleClaims) -> AppResult<User
     .fetch_one(pool)
     .await?;
     Ok(user)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config() -> Config {
+        Config {
+            bind_addr: "127.0.0.1:0".parse().unwrap(),
+            database_url: "postgres://example".to_string(),
+            jwt_secret: "test-secret".to_string(),
+            allowed_email_domain: "dimigo.hs.kr".to_string(),
+            google_client_id: Some("client".to_string()),
+            dev_auth: false,
+            cors_origins: vec!["http://localhost:3000".to_string()],
+            storage_dir: "./storage".into(),
+            environment: "test".to_string(),
+            supertone_api_key: None,
+            supertone_base_url: "https://api.supertone.ai".to_string(),
+            supertone_local_tts_url: None,
+            supertone_local_voice_url: None,
+            pronunciation_provider_url: None,
+            arxiv_real_enabled: false,
+            llm_api_url: None,
+            llm_api_key: None,
+            llm_model: "test-model".to_string(),
+        }
+    }
+
+    #[test]
+    fn allows_verified_dimigo_hosted_domain() {
+        let claims = GoogleClaims {
+            email: "student@dimigo.hs.kr".to_string(),
+            email_verified: true,
+            name: "Student".to_string(),
+            picture: None,
+            hosted_domain: Some("dimigo.hs.kr".to_string()),
+        };
+        assert!(require_allowed_email(&claims, &test_config()).is_ok());
+    }
+
+    #[test]
+    fn rejects_wrong_google_hosted_domain() {
+        let claims = GoogleClaims {
+            email: "student@dimigo.hs.kr".to_string(),
+            email_verified: true,
+            name: "Student".to_string(),
+            picture: None,
+            hosted_domain: Some("gmail.com".to_string()),
+        };
+        assert!(matches!(
+            require_allowed_email(&claims, &test_config()),
+            Err(AppError::Forbidden(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_unverified_email() {
+        let claims = GoogleClaims {
+            email: "student@dimigo.hs.kr".to_string(),
+            email_verified: false,
+            name: "Student".to_string(),
+            picture: None,
+            hosted_domain: Some("dimigo.hs.kr".to_string()),
+        };
+        assert!(matches!(
+            require_allowed_email(&claims, &test_config()),
+            Err(AppError::Forbidden(_))
+        ));
+    }
 }
 
 #[derive(Debug, Clone)]

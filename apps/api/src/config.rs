@@ -7,12 +7,19 @@ pub struct Config {
     pub jwt_secret: String,
     pub allowed_email_domain: String,
     pub google_client_id: Option<String>,
+    pub dev_auth: bool,
     pub cors_origins: Vec<String>,
     pub storage_dir: PathBuf,
     pub environment: String,
     pub supertone_api_key: Option<String>,
     pub supertone_base_url: String,
     pub supertone_local_tts_url: Option<String>,
+    pub supertone_local_voice_url: Option<String>,
+    pub pronunciation_provider_url: Option<String>,
+    pub arxiv_real_enabled: bool,
+    pub llm_api_url: Option<String>,
+    pub llm_api_key: Option<String>,
+    pub llm_model: String,
 }
 
 impl Config {
@@ -29,6 +36,7 @@ impl Config {
         let allowed_email_domain =
             env::var("ALLOWED_EMAIL_DOMAIN").unwrap_or_else(|_| "dimigo.hs.kr".to_string());
         let google_client_id = env::var("GOOGLE_CLIENT_ID").ok().filter(|v| !v.is_empty());
+        let dev_auth = env_bool("DEV_AUTH", false);
         let cors_origins = env::var("CORS_ORIGINS")
             .unwrap_or_else(|_| "http://localhost:3000".to_string())
             .split(',')
@@ -45,6 +53,7 @@ impl Config {
             jwt_secret,
             allowed_email_domain,
             google_client_id,
+            dev_auth,
             cors_origins,
             storage_dir,
             environment: env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()),
@@ -54,10 +63,27 @@ impl Config {
             supertone_local_tts_url: env::var("SUPERTONE_LOCAL_TTS_URL")
                 .ok()
                 .filter(|v| !v.is_empty()),
+            supertone_local_voice_url: env::var("SUPERTONE_LOCAL_VOICE_URL")
+                .ok()
+                .filter(|v| !v.is_empty()),
+            pronunciation_provider_url: env::var("PRONUNCIATION_PROVIDER_URL")
+                .ok()
+                .filter(|v| !v.is_empty()),
+            arxiv_real_enabled: env_bool("ARXIV_REAL_ENABLED", false),
+            llm_api_url: env::var("LLM_API_URL").ok().filter(|v| !v.is_empty()),
+            llm_api_key: env::var("LLM_API_KEY").ok().filter(|v| !v.is_empty()),
+            llm_model: env::var("LLM_MODEL").unwrap_or_else(|_| "gpt-4.1-mini".to_string()),
         })
     }
 
     pub fn is_development(&self) -> bool {
         self.environment == "development" || self.environment == "test"
     }
+}
+
+fn env_bool(key: &str, default: bool) -> bool {
+    env::var(key)
+        .ok()
+        .map(|value| matches!(value.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(default)
 }
