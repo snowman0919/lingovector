@@ -42,4 +42,4 @@ COPY --from=builder --chown=nextjs:nextjs /app/apps/web/public ./apps/web/public
 
 EXPOSE 3000
 USER nextjs
-CMD ["node", "apps/web/server.js"]
+CMD ["sh", "-c", "if [ -n \"$WEB_PORT\" ]; then export PORT=\"$WEB_PORT\"; else export PORT=\"${PORT:-3000}\"; fi; exec node apps/web/server.js"]

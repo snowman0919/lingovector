@@ -22,6 +22,8 @@ Use this for staging rehearsal and every beta deploy window. Do not deploy from 
 - [ ] `ALLOWED_EMAIL_DOMAIN=dimigo.hs.kr`
 - [ ] `CORS_ORIGINS=https://lingovector.kotori9.run`
 - [ ] `NEXT_PUBLIC_API_BASE_URL=/api`
+- [ ] `API_PORT=8080`, `WEB_PORT=3000`, `POSTGRES_PORT=5432` or documented alternatives
+- [ ] `API_HOST_PORT=18080`, `WEB_HOST_PORT=13000`, `POSTGRES_HOST_PORT=15432` or documented alternatives for this shared server
 - [ ] `NEXT_PUBLIC_GOOGLE_CLIENT_ID` matches the web OAuth client
 - [ ] `DIAGNOSTICS_ENABLED=false` unless a short admin check is scheduled
 - [ ] `NEXT_PUBLIC_DIAGNOSTICS_ENABLED=false` for normal student builds
@@ -61,7 +63,7 @@ Use this for staging rehearsal and every beta deploy window. Do not deploy from 
 - [ ] Confirm response includes `"ok": true`
 - [ ] Start frontend
 - [ ] Open `https://lingovector.kotori9.run`
-- [ ] Confirm Cloudflare Tunnel routes `lingovector.kotori9.run /api/*` to the API before the web fallback route
+- [ ] Confirm Cloudflare Tunnel routes `lingovector.kotori9.run /api/*` to `http://api:${API_PORT}` before the web fallback route to `http://web:${WEB_PORT}`
 - [ ] Confirm Postgres is not publicly reachable
 
 ## Smoke Tests

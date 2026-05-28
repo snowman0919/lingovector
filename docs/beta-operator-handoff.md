@@ -14,7 +14,8 @@ Use this checklist when handing Lingovector to the staging/beta operator.
 ## Start Staging
 
 - [ ] `export COMPOSE_PROJECT_NAME=lingovector-staging`
-- [ ] Configure Cloudflare Tunnel single hostname rules: `lingovector.kotori9.run /api/*` -> `http://api:8080`, then default path -> `http://web:3000`
+- [ ] Confirm port env values for this shared server, for example `API_PORT=8080`, `WEB_PORT=3000`, `API_HOST_PORT=18080`, `WEB_HOST_PORT=13000`
+- [ ] Configure Cloudflare Tunnel single hostname rules: `lingovector.kotori9.run /api/*` -> `http://api:${API_PORT}`, then default path -> `http://web:${WEB_PORT}`
 - [ ] Set `CLOUDFLARE_TUNNEL_TOKEN` outside git
 - [ ] Build: `docker compose --env-file .env.staging -f docker-compose.production.example.yml build`
 - [ ] Start: `LINGOVECTOR_ENV_FILE=.env.staging docker compose --env-file .env.staging -f docker-compose.production.example.yml -f docker-compose.cloudflare.example.yml up -d`

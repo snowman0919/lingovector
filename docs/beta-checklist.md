@@ -30,6 +30,8 @@ Use this checklist before a small school-internal beta. Do not paste secrets int
 - [ ] `ALLOWED_EMAIL_DOMAIN=dimigo.hs.kr`
 - [ ] `CORS_ORIGINS=https://lingovector.kotori9.run`
 - [ ] `NEXT_PUBLIC_API_BASE_URL=/api`
+- [ ] Shared-server ports are set intentionally: `API_PORT`, `WEB_PORT`, `POSTGRES_PORT`, `API_HOST_PORT`, `WEB_HOST_PORT`, `POSTGRES_HOST_PORT`
+- [ ] Postgres host binding remains localhost-only and is not routed through Cloudflare
 - [ ] `DIAGNOSTICS_ENABLED=false` unless an admin-only diagnostics check is planned
 - [ ] `NEXT_PUBLIC_DIAGNOSTICS_ENABLED=false` for normal student builds
 - [ ] `NEXT_PUBLIC_TTS_MODE=browser_onnx` is set only when ONNX model/schema files are deployed; otherwise use `server` or `mock` intentionally

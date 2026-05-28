@@ -1,6 +1,8 @@
 // For Cloudflare Tunnel staging, use:
 //   STAGING_API_BASE_URL=https://lingovector.kotori9.run/api npm run test:staging-smoke
-const API_BASE = (process.env.STAGING_API_BASE_URL ?? process.env.LINGOVECTOR_API_BASE_URL ?? process.env.API_BASE ?? "http://127.0.0.1:8080").replace(/\/$/, "");
+const localApiHost = !process.env.API_HOST || ["0.0.0.0", "::"].includes(process.env.API_HOST) ? "127.0.0.1" : process.env.API_HOST;
+const localApiPort = process.env.API_HOST_PORT ?? process.env.API_PORT ?? "8080";
+const API_BASE = (process.env.STAGING_API_BASE_URL ?? process.env.LINGOVECTOR_API_BASE_URL ?? process.env.API_BASE ?? `http://${localApiHost}:${localApiPort}`).replace(/\/$/, "");
 const TOKEN = process.env.STAGING_AUTH_TOKEN ?? process.env.LINGOVECTOR_AUTH_TOKEN;
 
 const allowedModes = new Set(["mock", "configured", "reachable", "failed", "disabled"]);

@@ -12,14 +12,14 @@ Browser
   -> Cloudflare Tunnel
   -> cloudflared container
   -> Docker Compose network
-  -> web:3000 and api:8080
+  -> web:${WEB_PORT:-3000} and api:${API_PORT:-8080}
 ```
 
 Services:
 
-- `web`: Next.js production server on container port `3000`.
-- `api`: Rust Axum API on container port `8080`.
-- `postgres`: PostgreSQL on container port `5432`, never public.
+- `web`: Next.js production server on container port `WEB_PORT`, default `3000`.
+- `api`: Rust Axum API on container port `API_PORT`, default `8080`.
+- `postgres`: PostgreSQL on container port `POSTGRES_PORT`, default `5432`, never public.
 - `cloudflared`: outbound tunnel connector.
 
 Recommended public hostname:
@@ -40,11 +40,11 @@ This is the recommended default because `cloudflared` can reach `web` and `api` 
 3. Configure ordered public hostname/path rules in Cloudflare:
 
    ```text
-   lingovector.kotori9.run /api/*  -> http://api:8080
-   lingovector.kotori9.run /*      -> http://web:3000
+   lingovector.kotori9.run /api/*  -> http://api:${API_PORT}
+   lingovector.kotori9.run /*      -> http://web:${WEB_PORT}
    ```
 
-   The `/api/*` rule must come before the web fallback rule.
+   The `/api/*` rule must come before the web fallback rule. Substitute the actual values from `.env.production` or `.env.staging`; the Cloudflare dashboard does not expand Compose env vars in service URLs.
 
 4. Start Compose with the tunnel overlay:
 
@@ -87,9 +87,9 @@ Use this if the operator prefers OS-managed `cloudflared`, or if the Cloudflare 
    ingress:
      - hostname: lingovector.kotori9.run
        path: /api/*
-       service: http://127.0.0.1:8080
+       service: http://127.0.0.1:18080
      - hostname: lingovector.kotori9.run
-       service: http://127.0.0.1:3000
+       service: http://127.0.0.1:13000
      - service: http_status:404
    ```
 
@@ -105,8 +105,8 @@ High-level Zero Trust steps:
 2. Create a tunnel for the Linux server.
 3. Install/run the connector using either the Compose token or systemd setup.
 4. Add public hostname/path rules:
-   - `lingovector.kotori9.run` with path `/api/*` -> `http://api:8080` for Compose service mode, or `http://127.0.0.1:8080` for systemd mode.
-   - `lingovector.kotori9.run` default/fallback path -> `http://web:3000` for Compose service mode, or `http://127.0.0.1:3000` for systemd mode.
+   - `lingovector.kotori9.run` with path `/api/*` -> `http://api:${API_PORT}` for Compose service mode, or `http://127.0.0.1:${API_HOST_PORT}` for systemd mode.
+   - `lingovector.kotori9.run` default/fallback path -> `http://web:${WEB_PORT}` for Compose service mode, or `http://127.0.0.1:${WEB_HOST_PORT}` for systemd mode.
 5. Confirm the `/api/*` rule is ordered before the web fallback rule.
 6. Confirm Cloudflare DNS is managed for `lingovector.kotori9.run`.
 
@@ -119,6 +119,11 @@ For the single public hostname:
 ```text
 CORS_ORIGINS=https://lingovector.kotori9.run
 NEXT_PUBLIC_API_BASE_URL=/api
+API_PORT=8080
+WEB_PORT=3000
+API_HOST_PORT=18080
+WEB_HOST_PORT=13000
+POSTGRES_HOST_PORT=15432
 ```
 
 OAuth:
@@ -139,7 +144,8 @@ Authorized redirect URIs can remain empty unless the app changes to a redirect/c
 ## Security Notes
 
 - Do not expose Postgres publicly.
-- Do not publish Docker ports on `0.0.0.0` unless another reviewed network boundary exists.
+- Do not publish Docker ports on `0.0.0.0` unless another reviewed network boundary exists. The example Compose file binds host ports to `127.0.0.1`.
+- Keep `POSTGRES_HOST_PORT` localhost-only for maintenance; Cloudflare should never route to Postgres.
 - Do not enable `DEV_AUTH` in staging or production.
 - Keep diagnostics disabled in production. Enable only for a short authenticated operator check.
 - Do not commit `CLOUDFLARE_TUNNEL_TOKEN`.

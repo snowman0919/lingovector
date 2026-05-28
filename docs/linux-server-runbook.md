@@ -71,11 +71,19 @@ Fill values outside git:
 - `ALLOWED_EMAIL_DOMAIN=dimigo.hs.kr`
 - `CORS_ORIGINS=https://lingovector.kotori9.run`
 - `NEXT_PUBLIC_API_BASE_URL=/api`
+- `API_PORT=8080`
+- `WEB_PORT=3000`
+- `POSTGRES_PORT=5432`
+- `API_HOST_PORT=18080`
+- `WEB_HOST_PORT=13000`
+- `POSTGRES_HOST_PORT=15432`
 - `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
 - provider env vars only after approval
 - `CLOUDFLARE_TUNNEL_TOKEN` only as a shell environment variable or protected secret source, not in `.env.staging` or `.env.production`
 
 Do not enable `DEV_AUTH` in staging or production.
+
+Container ports are used by Docker service-name routing and Cloudflare Compose mode. Host ports are localhost-only bindings for operator checks on a shared server; change `API_HOST_PORT` and `WEB_HOST_PORT` when another service already uses those host ports. Keep `POSTGRES_HOST_PORT` bound to `127.0.0.1` only and do not route it through Cloudflare.
 
 ## Build
 
@@ -109,8 +117,8 @@ Recommended: Compose-managed `cloudflared`.
 
 1. In Cloudflare Zero Trust, create a tunnel.
 2. Add ordered public hostname/path rules:
-   - `lingovector.kotori9.run` path `/api/*` -> `http://api:8080`
-   - `lingovector.kotori9.run` default path -> `http://web:3000`
+   - `lingovector.kotori9.run` path `/api/*` -> `http://api:${API_PORT}`
+   - `lingovector.kotori9.run` default path -> `http://web:${WEB_PORT}`
    The `/api/*` rule must come first.
 3. Put the token in the server shell/session or protected environment file:
 
@@ -118,7 +126,7 @@ Recommended: Compose-managed `cloudflared`.
    export CLOUDFLARE_TUNNEL_TOKEN=PASTE_TOKEN_IN_SHELL_ONLY
    ```
 
-Alternative: install `cloudflared` as a systemd service and route `lingovector.kotori9.run /api/*` to `http://127.0.0.1:8080`, then the default route to `http://127.0.0.1:3000`.
+Alternative: install `cloudflared` as a systemd service and route `lingovector.kotori9.run /api/*` to `http://127.0.0.1:${API_HOST_PORT}`, then the default route to `http://127.0.0.1:${WEB_HOST_PORT}`.
 
 ## Start
 
@@ -153,7 +161,7 @@ docker compose --env-file .env.production \
 Local API health:
 
 ```bash
-curl -fsS http://127.0.0.1:8080/health
+curl -fsS http://127.0.0.1:${API_HOST_PORT:-18080}/health
 ```
 
 Cloudflare Tunnel API health:

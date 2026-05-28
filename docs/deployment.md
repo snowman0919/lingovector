@@ -4,8 +4,8 @@ This document describes a production deployment rehearsal for Lingovector. It is
 
 ## Recommended Architecture
 
-- Next.js frontend runs as a production Node server on `127.0.0.1:3000`.
-- Rust Axum API runs on `127.0.0.1:8080`.
+- Next.js frontend runs as a production Node server on `WEB_PORT` inside the container, default `3000`.
+- Rust Axum API runs on `API_HOST:API_PORT` inside the container, default `0.0.0.0:8080`.
 - PostgreSQL runs as a managed database or a server-local PostgreSQL service/container.
 - Runtime storage stores server-generated TTS/pronunciation audio and uploaded voice samples under `STORAGE_DIR`; local disk is acceptable for a small rehearsal, but object storage should replace local disk before larger use.
 - Browser-side Supertonic ONNX TTS is the preferred beta direction when model assets are deployed; server-side Supertone/Supertonic remains an optional fallback.
@@ -21,11 +21,19 @@ Expected public routes:
 
 Root API routes such as `/health` remain available for internal container healthchecks and backward-compatible local scripts. Public Cloudflare routing should prefer `/api/*`.
 
-Expected internal ports:
+Expected internal/container ports:
 
-- Frontend: `3000`
-- API: `8080`
-- PostgreSQL: `5432`
+- Frontend: `WEB_PORT=3000`
+- API: `API_PORT=8080`
+- PostgreSQL: `POSTGRES_PORT=5432`
+
+Recommended localhost host ports on a shared Linux server:
+
+- `WEB_HOST_PORT=13000`
+- `API_HOST_PORT=18080`
+- `POSTGRES_HOST_PORT=15432`
+
+Cloudflare Compose mode reaches Docker service names and internal ports, so it should target `http://web:${WEB_PORT}` and `http://api:${API_PORT}`. Host ports are for local operator checks or systemd `cloudflared`. Postgres is bound only to `127.0.0.1` and must not be exposed publicly.
 
 ## Required Environment
 
@@ -82,6 +90,12 @@ Production startup fails fast when required env vars are missing or unsafe. `DEV
    POSTGRES_USER=lingovector
    POSTGRES_PASSWORD=YOUR_LOCAL_REHEARSAL_PASSWORD
    POSTGRES_DB=lingovector
+   API_PORT=8080
+   WEB_PORT=3000
+   POSTGRES_PORT=5432
+   API_HOST_PORT=18080
+   WEB_HOST_PORT=13000
+   POSTGRES_HOST_PORT=15432
    NEXT_PUBLIC_API_BASE_URL=/api
    CORS_ORIGINS=https://lingovector.kotori9.run
    ```
@@ -105,7 +119,7 @@ The example compose file includes PostgreSQL for rehearsal. If production uses a
 5. Check health:
 
    ```bash
-   curl -fsS http://127.0.0.1:8080/health
+   curl -fsS http://127.0.0.1:${API_HOST_PORT:-18080}/health
    docker compose --env-file .env.production -f docker-compose.production.example.yml ps
    docker compose --env-file .env.production -f docker-compose.production.example.yml logs --tail=100 api
    ```
@@ -113,7 +127,7 @@ The example compose file includes PostgreSQL for rehearsal. If production uses a
 6. Run production-mode checks:
 
    ```bash
-   curl -fsS http://127.0.0.1:8080/health
+   curl -fsS http://127.0.0.1:${API_HOST_PORT:-18080}/health
    ```
 
    For a production-mode rehearsal with `ENVIRONMENT=production`, `DEV_AUTH=true` is rejected by design, so the dev-token smoke scripts will not authenticate. Use manual browser testing with Google OAuth for the production-mode compose stack.
@@ -233,8 +247,8 @@ HTTPS is required for production Google sign-in and microphone recording. Google
 When `cloudflared` runs as a Compose service, configure Cloudflare public hostname/path rules to the internal Docker service URLs:
 
 ```text
-lingovector.kotori9.run /api/*  -> http://api:8080
-lingovector.kotori9.run /*      -> http://web:3000
+lingovector.kotori9.run /api/*  -> http://api:${API_PORT}
+lingovector.kotori9.run /*      -> http://web:${WEB_PORT}
 ```
 
 The `/api/*` rule must be before the web fallback. Cloudflare Tunnel does not need to strip `/api`; the backend serves all public API routes under `/api`. This avoids a predictable API subdomain, but `/api` is still discoverable and is not a security boundary.
@@ -253,7 +267,7 @@ Use [cloudflare-tunnel.md](cloudflare-tunnel.md) for the full Cloudflare Tunnel 
 - [ ] `NEXT_PUBLIC_API_BASE_URL=/api`.
 - [ ] Database backup is complete.
 - [ ] Migration check reviewed.
-- [ ] Cloudflare Tunnel routes `lingovector.kotori9.run /api/*` to `api:8080` before routing the default path to `web:3000`.
+- [ ] Cloudflare Tunnel routes `lingovector.kotori9.run /api/*` to `api:${API_PORT}` before routing the default path to `web:${WEB_PORT}`.
 - [ ] `/api/health` returns OK publicly and `/health` returns OK internally.
 - [ ] Manual `@dimigo.hs.kr` login succeeds.
 - [ ] First-login consent gate is reviewed and accepted by the operator test account.

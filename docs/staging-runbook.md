@@ -32,6 +32,12 @@ JWT_SECRET=STAGING_ONLY_LONG_RANDOM_VALUE_AT_LEAST_32_CHARS
 GOOGLE_CLIENT_ID=YOUR_STAGING_GOOGLE_CLIENT_ID
 ALLOWED_EMAIL_DOMAIN=dimigo.hs.kr
 CORS_ORIGINS=https://lingovector.kotori9.run
+API_PORT=8080
+WEB_PORT=3000
+POSTGRES_PORT=5432
+API_HOST_PORT=18080
+WEB_HOST_PORT=13000
+POSTGRES_HOST_PORT=15432
 STORAGE_DIR=/app/storage
 DIAGNOSTICS_ENABLED=false
 NEXT_PUBLIC_API_BASE_URL=/api
@@ -76,8 +82,8 @@ export CLOUDFLARE_TUNNEL_TOKEN=PASTE_TOKEN_IN_SHELL_ONLY
 In Cloudflare Zero Trust, route one public hostname to internal Docker services with ordered path rules:
 
 ```text
-lingovector.kotori9.run /api/*  -> http://api:8080
-lingovector.kotori9.run /*      -> http://web:3000
+lingovector.kotori9.run /api/*  -> http://api:${API_PORT}
+lingovector.kotori9.run /*      -> http://web:${WEB_PORT}
 ```
 
 Then use:
@@ -88,6 +94,8 @@ NEXT_PUBLIC_API_BASE_URL=/api
 ```
 
 The `/api/*` rule must be before the web fallback. Cloudflare Tunnel does not need to strip `/api`; the backend serves `/api/*` directly. Do not publish Postgres. Do not commit the tunnel token.
+
+Cloudflare Compose mode uses Docker service names and container ports. Host ports such as `API_HOST_PORT=18080` and `WEB_HOST_PORT=13000` are only for local operator checks or systemd `cloudflared`. Keep `POSTGRES_HOST_PORT` localhost-only and never route it through Cloudflare.
 
 ## Build
 
@@ -135,7 +143,7 @@ docker compose --env-file .env.staging \
 From the host:
 
 ```bash
-curl -fsS http://127.0.0.1:8080/health
+curl -fsS http://127.0.0.1:${API_HOST_PORT:-18080}/health
 ```
 
 Through the staging public hostname or tunnel:

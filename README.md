@@ -83,6 +83,13 @@ On first login, users must accept the current Korean beta privacy consent sectio
 ## Environment Variables
 
 - `ENVIRONMENT`: use `development`, `test`, or `production`. Production enables fail-fast safety validation.
+- `API_HOST`: API bind host. Default `0.0.0.0`; `BIND_ADDR` still works as a legacy override.
+- `API_PORT`: API container/internal port. Default `8080`.
+- `WEB_PORT`: Next.js production container/internal port. Default `3000`.
+- `POSTGRES_PORT`: PostgreSQL container/internal port. Default `5432`.
+- `API_HOST_PORT`: localhost host port published by production Compose for operator checks. Recommended `18080`.
+- `WEB_HOST_PORT`: localhost host port published by production Compose for operator checks. Recommended `13000`.
+- `POSTGRES_HOST_PORT`: localhost-only PostgreSQL host port for operator maintenance. Recommended `15432`; do not bind Postgres publicly.
 - `DATABASE_URL`: PostgreSQL connection string. Required in production.
 - `JWT_SECRET`: server-side session token signing secret. In production it must be present, non-default, and at least 32 characters.
 - `DEV_AUTH`: allows `dev:*@dimigo.hs.kr` tokens only when explicitly `true`. Production rejects `DEV_AUTH=true`.
@@ -233,6 +240,19 @@ https://lingovector.kotori9.run/api/  -> API
 ```
 
 This avoids a separate predictable API subdomain and keeps OAuth/CORS on one origin. It is not a security boundary; auth, safe CORS, disabled diagnostics, `DEV_AUTH=false`, and secret handling still matter.
+
+On shared Linux servers, keep container ports stable and move only localhost host ports as needed:
+
+```text
+API_PORT=8080
+WEB_PORT=3000
+POSTGRES_PORT=5432
+API_HOST_PORT=18080
+WEB_HOST_PORT=13000
+POSTGRES_HOST_PORT=15432
+```
+
+Cloudflare Tunnel should target Docker service names and internal ports, for example `http://api:8080` and `http://web:3000`. Host ports are for local operator checks and systemd `cloudflared`; Postgres must stay localhost-only.
 
 Use [docs/linux-server-runbook.md](docs/linux-server-runbook.md) and [docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md) for the Linux server plus Cloudflare Tunnel path. Use [docs/staging-runbook.md](docs/staging-runbook.md) for production-like staging rehearsal. Use [docs/oauth-setup.md](docs/oauth-setup.md) and [docs/provider-onboarding.md](docs/provider-onboarding.md) for real OAuth/provider setup. Use [docs/beta-operator-handoff.md](docs/beta-operator-handoff.md) for the human handoff checklist. Use [docs/deployment.md](docs/deployment.md) for the deployment rehearsal runbook. Use [docs/operations-checklist.md](docs/operations-checklist.md) during each beta deploy window.
 

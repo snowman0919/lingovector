@@ -30,9 +30,7 @@ impl Config {
     }
 
     fn from_lookup(get: impl Fn(&str) -> Option<String>) -> anyhow::Result<Self> {
-        let bind_addr = get("BIND_ADDR")
-            .unwrap_or_else(|| "127.0.0.1:8080".to_string())
-            .parse()?;
+        let bind_addr = bind_addr_from_env(&get)?;
         let raw_database_url = get("DATABASE_URL").filter(|value| !value.trim().is_empty());
         let database_url = raw_database_url.clone().unwrap_or_else(|| {
             "postgres://postgres:postgres@localhost:5432/lingovector".to_string()
@@ -106,6 +104,19 @@ impl Config {
     pub fn diagnostics_allowed(&self) -> bool {
         self.is_development() || self.diagnostics_enabled
     }
+}
+
+fn bind_addr_from_env(get: &impl Fn(&str) -> Option<String>) -> anyhow::Result<SocketAddr> {
+    if let Some(bind_addr) = get("BIND_ADDR").filter(|value| !value.trim().is_empty()) {
+        return Ok(bind_addr.parse()?);
+    }
+    let api_host = get("API_HOST")
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "0.0.0.0".to_string());
+    let api_port = get("API_PORT")
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "8080".to_string());
+    Ok(format!("{api_host}:{api_port}").parse()?)
 }
 
 fn lookup_bool(get: &impl Fn(&str) -> Option<String>, key: &str, default: bool) -> bool {
@@ -207,9 +218,27 @@ mod tests {
     fn development_config_keeps_local_defaults() {
         let config = config_from(&[]).unwrap();
         assert_eq!(config.environment, "development");
+        assert_eq!(config.bind_addr, "0.0.0.0:8080".parse().unwrap());
         assert_eq!(config.allowed_email_domain, "dimigo.hs.kr");
         assert!(!config.dev_auth);
         assert_eq!(config.cors_origins, vec!["http://localhost:3000"]);
+    }
+
+    #[test]
+    fn api_host_and_port_configure_bind_addr() {
+        let config = config_from(&[("API_HOST", "127.0.0.1"), ("API_PORT", "18080")]).unwrap();
+        assert_eq!(config.bind_addr, "127.0.0.1:18080".parse().unwrap());
+    }
+
+    #[test]
+    fn bind_addr_remains_backward_compatible_override() {
+        let config = config_from(&[
+            ("BIND_ADDR", "127.0.0.1:19090"),
+            ("API_HOST", "0.0.0.0"),
+            ("API_PORT", "18080"),
+        ])
+        .unwrap();
+        assert_eq!(config.bind_addr, "127.0.0.1:19090".parse().unwrap());
     }
 
     #[test]

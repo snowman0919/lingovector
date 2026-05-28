@@ -1,7 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-const API_BASE = process.env.API_BASE ?? "http://127.0.0.1:8080";
+const localApiHost = !process.env.API_HOST || ["0.0.0.0", "::"].includes(process.env.API_HOST) ? "127.0.0.1" : process.env.API_HOST;
+const localApiPort = process.env.API_HOST_PORT ?? process.env.API_PORT ?? "8080";
+const API_BASE = (process.env.LINGOVECTOR_API_BASE_URL ?? process.env.STAGING_API_BASE_URL ?? process.env.API_BASE ?? `http://${localApiHost}:${localApiPort}`).replace(/\/$/, "");
 const ROOT = resolve(import.meta.dirname, "..");
 const FIXTURE_PATH = resolve(ROOT, "fixtures/learning-quality/samples.json");
 const OUTPUT_DIR = resolve(ROOT, "local-output/learning-quality");
