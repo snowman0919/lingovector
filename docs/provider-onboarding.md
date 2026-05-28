@@ -43,7 +43,40 @@ Common failures:
 
 Privacy/cost cautions: passages and student writing may be sent to the provider. Enable only after operator approval and cost limits are clear.
 
-## Supertone/Supertonic TTS
+## Browser Supertonic ONNX TTS
+
+Preferred beta path when model assets are available.
+
+Env vars:
+
+```text
+NEXT_PUBLIC_TTS_MODE=browser_onnx
+NEXT_PUBLIC_SUPERTONIC_ONNX_MODEL_URL=/models/supertonic/model.onnx
+NEXT_PUBLIC_SUPERTONIC_ONNX_CONFIG_URL=/models/supertonic/config.json
+```
+
+Mock/fallback behavior: if model files or schema config are absent, the Korean UI reports that on-device TTS is unavailable and falls back to server/mock TTS.
+
+Smoke command: verify in the browser by opening a sentence and clicking `문장 재생`; then run normal authenticated smoke for the server fallback:
+
+```bash
+npm run test:tts-smoke
+```
+
+Expected success: UI shows `온디바이스 TTS 상태: 브라우저 ONNX` when configured. Without a reviewed schema, the expected result is a clear fallback message, not fake real audio generation.
+
+Common failures:
+
+- ONNX model file was not deployed to the public path.
+- `NEXT_PUBLIC_SUPERTONIC_ONNX_CONFIG_URL` is missing.
+- Browser lacks WebGPU and WASM fallback assets are unavailable.
+- Account/model-specific input/output schema differs from the placeholder adapter.
+
+Privacy/cost cautions: browser ONNX can keep TTS generation on device, but model licensing and browser compatibility still need operator review.
+
+See [supertonic-onnx.md](supertonic-onnx.md).
+
+## Server-side Supertone/Supertonic TTS Fallback
 
 Env vars:
 

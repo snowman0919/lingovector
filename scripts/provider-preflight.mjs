@@ -89,14 +89,29 @@ const report = {
       !configured("LLM_API_URL"),
     ),
     provider(
-      "tts",
+      "browser_tts",
+      env.NEXT_PUBLIC_TTS_MODE === "browser_onnx"
+        ? "browser-onnx-intended"
+        : env.NEXT_PUBLIC_TTS_MODE === "mock"
+          ? "mock"
+          : "server-fallback",
+      ["NEXT_PUBLIC_TTS_MODE", "NEXT_PUBLIC_SUPERTONIC_ONNX_MODEL_URL", "NEXT_PUBLIC_SUPERTONIC_ONNX_CONFIG_URL"],
+      env.NEXT_PUBLIC_TTS_MODE === "browser_onnx"
+        ? "Browser ONNX TTS is intended. Confirm model/schema assets are deployed outside git."
+        : env.NEXT_PUBLIC_TTS_MODE === "mock"
+          ? "Frontend mock TTS is intended for isolated UI verification."
+          : "Frontend will use backend /tts server fallback.",
+      true,
+    ),
+    provider(
+      "server_tts_fallback",
       modeFrom(configured("SUPERTONE_API_KEY") || configured("SUPERTONE_LOCAL_TTS_URL")),
       ["SUPERTONE_API_KEY", "SUPERTONE_LOCAL_TTS_URL", "SUPERTONE_BASE_URL"],
       configured("SUPERTONE_LOCAL_TTS_URL")
-        ? "Local TTS path is intended; check local server contract."
+        ? "Local server-side TTS fallback is intended; check local server contract."
           : configured("SUPERTONE_API_KEY")
-            ? "Supertone API TTS path is intended; endpoint/body may need account-specific adjustment."
-            : "Mock TTS path will be used.",
+            ? "Server-side Supertone API fallback is intended; endpoint/body may need account-specific adjustment."
+            : "Backend mock TTS fallback will be used.",
       !configured("SUPERTONE_API_KEY"),
     ),
     provider(

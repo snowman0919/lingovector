@@ -25,6 +25,8 @@ Use this for staging rehearsal and every beta deploy window. Do not deploy from 
 - [ ] `NEXT_PUBLIC_GOOGLE_CLIENT_ID` matches the web OAuth client
 - [ ] `DIAGNOSTICS_ENABLED=false` unless a short admin check is scheduled
 - [ ] `NEXT_PUBLIC_DIAGNOSTICS_ENABLED=false` for normal student builds
+- [ ] `NEXT_PUBLIC_TTS_MODE` matches the approved beta TTS path (`browser_onnx`, `server`, or `mock`)
+- [ ] Browser ONNX model/config files are deployed outside git if `NEXT_PUBLIC_TTS_MODE=browser_onnx`
 
 ## OAuth Check
 
@@ -86,12 +88,14 @@ Use this for staging rehearsal and every beta deploy window. Do not deploy from 
 ## Beta User Test
 
 - [ ] Student signs in with `@dimigo.hs.kr`
+- [ ] First-use Korean consent gate appears for a new test account
+- [ ] Required consent acceptance activates the dashboard
 - [ ] Main student UI labels and instructions are Korean
 - [ ] Student pastes a short passage
 - [ ] Sentence analysis appears
 - [ ] Simple English explanation appears before detailed Korean support
 - [ ] Student clicks a word and sees word details
-- [ ] TTS plays or mock status is understood by operators
+- [ ] TTS plays through browser ONNX, server fallback, or mock mode as intentionally configured
 - [ ] Voice consent copy is visible
 - [ ] Voice upload/delete succeeds in the selected provider mode
 - [ ] Pronunciation score appears
@@ -104,6 +108,9 @@ Use this for staging rehearsal and every beta deploy window. Do not deploy from 
 - [ ] Run `STORAGE_DIR=/path/to/storage npm run ops:storage`
 - [ ] Confirm voice/audio files are not world-readable on the host
 - [ ] Confirm backup policy does not unintentionally expose voice samples
+- [ ] Confirm `개인정보 및 계정` can delete voice data for a test account
+- [ ] Confirm account deletion/consent withdrawal removes the test account and blocks the old token
+- [ ] Do not upload real student voice until consent/deletion behavior has passed this checklist
 - [ ] Review `local-output/learning-quality` and clean old local outputs if needed
 
 ## Rollback Plan

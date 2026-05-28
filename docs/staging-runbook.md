@@ -44,7 +44,7 @@ POSTGRES_PASSWORD=STAGING_PASSWORD
 POSTGRES_DB=lingovector_staging
 ```
 
-Provider env vars are optional. Leave `LLM_API_URL`, `LLM_API_KEY`, `SUPERTONE_API_KEY`, `SUPERTONE_LOCAL_TTS_URL`, `SUPERTONE_LOCAL_VOICE_URL`, and `PRONUNCIATION_PROVIDER_URL` empty for mock mode. Set `ARXIV_REAL_ENABLED=false` unless intentionally checking the real arXiv path.
+Provider env vars are optional. Leave `LLM_API_URL`, `LLM_API_KEY`, `SUPERTONE_API_KEY`, `SUPERTONE_LOCAL_TTS_URL`, `SUPERTONE_LOCAL_VOICE_URL`, and `PRONUNCIATION_PROVIDER_URL` empty for mock mode. Set `ARXIV_REAL_ENABLED=false` unless intentionally checking the real arXiv path. Use `NEXT_PUBLIC_TTS_MODE=browser_onnx` only when Supertonic ONNX model/schema assets are mounted or deployed; otherwise select `server` or `mock` deliberately.
 
 `APP_ENV=staging` is production-like in the backend: required env vars are validated, HTTPS CORS is required, diagnostics are off by default, and `DEV_AUTH=true` is rejected.
 
@@ -182,7 +182,7 @@ Authenticated staging checks:
    npm run test:staging-smoke
    ```
 
-The script does not print the token. It checks `/health`, protected-route rejection, `/me`, diagnostics if enabled, passage analysis, TTS metadata, and arXiv title/abstract behavior.
+The script does not print the token. It checks `/health`, protected-route rejection, `/me`, current consent acceptance, diagnostics if enabled, passage analysis, TTS metadata, and arXiv title/abstract behavior.
 
 For a deeper authenticated check that also covers word inspection, pronunciation scoring, writing tutor, and arXiv open:
 
@@ -258,7 +258,7 @@ For a staging rehearsal rollback:
 
 4. Checkout the previous commit or retag the previous images.
 5. Rebuild/restart.
-6. Confirm `/health`, OAuth login, passage analysis, TTS, voice upload/delete, and writing tutor.
+6. Confirm `/health`, OAuth login, first-login Korean consent gate, passage analysis, TTS, voice upload/delete, account deletion with a test account, and writing tutor.
 
 ## Shutdown
 
@@ -302,5 +302,6 @@ Do not run `down --volumes` against a production compose project or any staging 
 - Google login rejected: confirm `GOOGLE_CLIENT_ID`, authorized JavaScript origin, and verified `@dimigo.hs.kr` account.
 - Browser cannot call API: confirm `NEXT_PUBLIC_API_BASE_URL`, reverse proxy/tunnel route, HTTPS certificate, and `CORS_ORIGINS`.
 - Diagnostics returns 404: expected when disabled. Temporarily enable `DIAGNOSTICS_ENABLED=true` only for an operator check.
-- TTS returns mock provider: expected unless `SUPERTONE_API_KEY` or `SUPERTONE_LOCAL_TTS_URL` is configured.
+- TTS returns mock provider: expected if `NEXT_PUBLIC_TTS_MODE=mock` or server-side fallback has no provider configured.
+- Browser ONNX TTS falls back: expected until `NEXT_PUBLIC_SUPERTONIC_ONNX_CONFIG_URL` points to a reviewed Supertonic schema and model files are deployed.
 - Voice upload fails: confirm file type, consent text includes agreement, `STORAGE_DIR` is writable, and storage volume is mounted.

@@ -24,10 +24,28 @@ assert(health.ok === true && health.database?.ready === true, "health endpoint d
 
 const login = await request("/auth/google", {
   method: "POST",
-  body: JSON.stringify({ id_token: "dev:student@dimigo.hs.kr" }),
+  body: JSON.stringify({ id_token: `dev:smoke-${Date.now()}@dimigo.hs.kr` }),
 });
 const token = login.access_token;
 assert(token, "login did not return access token");
+
+const blocked = await fetch(`${API_BASE}/passages`, {
+  headers: { Authorization: `Bearer ${token}` },
+});
+const blockedBody = await blocked.json().catch(() => ({}));
+assert(blocked.status === 403 && blockedBody.error === "consent_required", "protected learning route should require beta privacy consent before activation");
+
+const consentStatus = await request("/me/consents", {}, token);
+assert(consentStatus.has_required_consents === false, "fresh smoke user should need consent");
+const acceptedConsent = await request(
+  "/me/consents/accept",
+  {
+    method: "POST",
+    body: JSON.stringify({ accepted: consentStatus.required.map((item) => item.consent_type) }),
+  },
+  token,
+);
+assert(acceptedConsent.has_required_consents === true, "consent acceptance did not activate app access");
 
 const diagnostics = await request("/diagnostics/providers", {}, token);
 const allowedModes = new Set(["mock", "configured", "reachable", "failed", "disabled"]);
@@ -109,5 +127,10 @@ const papers = await request("/arxiv/recommendations", {}, token);
 assert(Array.isArray(papers) && papers.length >= 6, "arXiv recommendations missing categories");
 const opened = await request("/arxiv/open", { method: "POST", body: JSON.stringify({ id: papers[0].id }) }, token);
 assert(opened.source === "arxiv" && opened.sentences?.length > 0, "arXiv open did not analyze abstract");
+
+const deletedAccount = await request("/me", { method: "DELETE" }, token);
+assert(deletedAccount.deleted === true, "account deletion endpoint did not confirm deletion");
+const deletedMe = await fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${token}` } });
+assert(deletedMe.status === 401, "deleted account token should no longer authenticate");
 
 console.log("api smoke checks passed");

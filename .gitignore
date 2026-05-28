@@ -12,6 +12,8 @@ target/
 apps/api/storage/
 storage/
 apps/web/.next/
+apps/web/public/models/supertonic/*
+!apps/web/public/models/supertonic/README.md
 local-output/
 
 .DS_Store

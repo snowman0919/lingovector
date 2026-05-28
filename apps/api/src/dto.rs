@@ -24,6 +24,56 @@ pub struct LoginResponse {
     pub user: UserDto,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ConsentRequirement {
+    pub consent_type: String,
+    pub consent_version: String,
+    pub title: String,
+    pub body: String,
+    pub required: bool,
+    pub operator_review_required: bool,
+}
+
+#[derive(Debug, Serialize, Clone, sqlx::FromRow)]
+pub struct ConsentRecord {
+    pub consent_type: String,
+    pub consent_version: String,
+    pub accepted_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConsentStatusResponse {
+    pub has_required_consents: bool,
+    pub required: Vec<ConsentRequirement>,
+    pub accepted: Vec<ConsentRecord>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConsentAcceptRequest {
+    pub accepted: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DeleteAccountResponse {
+    pub deleted: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PrivacySummaryResponse {
+    pub passages_count: i64,
+    pub unknown_words_count: i64,
+    pub pronunciation_records_count: i64,
+    pub voice_profiles_count: i64,
+    pub writing_submissions_count: i64,
+    pub review_history_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DeleteVoiceDataResponse {
+    pub deleted_profiles: u64,
+    pub attempted_file_deletions: usize,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct AnalyzeRequest {
     pub title: Option<String>,

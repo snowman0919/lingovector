@@ -27,6 +27,7 @@ Use this checklist when handing Lingovector to the staging/beta operator.
 - [ ] Set backend `GOOGLE_CLIENT_ID`.
 - [ ] Set frontend `NEXT_PUBLIC_GOOGLE_CLIENT_ID` and rebuild web image.
 - [ ] Sign in with a verified `@dimigo.hs.kr` account.
+- [ ] Complete the Korean first-login privacy consent gate.
 - [ ] Confirm non-Dimigo account is rejected.
 
 ## Smoke
@@ -58,6 +59,7 @@ Use this checklist when handing Lingovector to the staging/beta operator.
   ```
 
 - [ ] Enable only one real provider at a time.
+- [ ] Prefer browser Supertonic ONNX TTS when model/schema assets are ready; otherwise document `server` or `mock` fallback.
 - [ ] Run the relevant provider smoke command.
 - [ ] Review logs for sanitized metadata only.
 - [ ] Disable or roll back provider env vars if output quality, cost, or privacy behavior is unclear.
@@ -72,6 +74,8 @@ Use this checklist when handing Lingovector to the staging/beta operator.
 
 ## Decision
 
-- [ ] Approve beta start only if OAuth, smoke checks, provider mode, privacy copy, voice delete, and rollback are verified.
+- [ ] Verify `개인정보 및 계정`: consent history, voice data delete, consent withdrawal/account deletion with a test account.
+- [ ] Do not upload real student voice until consent/deletion flow has been verified.
+- [ ] Approve beta start only if OAuth, smoke checks, provider mode, consent gate, privacy copy, voice delete, account deletion, and rollback are verified.
 - [ ] Reject beta start if real provider behavior, auth, storage, or privacy handling is uncertain.
 - [ ] Record known limitations and selected provider modes before inviting students.

@@ -2,15 +2,17 @@
 
 import { LogOut, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
+import { ConsentGate } from "@/components/ConsentGate";
 import { LoginPanel } from "@/components/LoginPanel";
 import { PassageLanding } from "@/components/PassageLanding";
 import { StudyDashboard } from "@/components/StudyDashboard";
-import { clearToken, getToken, me } from "@/lib/api";
-import type { Passage, User } from "@/lib/types";
+import { clearToken, consentStatus, getToken, me } from "@/lib/api";
+import type { ConsentStatus, Passage, User } from "@/lib/types";
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [passage, setPassage] = useState<Passage | null>(null);
+  const [consents, setConsents] = useState<ConsentStatus | null>(null);
   const [booted, setBooted] = useState(false);
 
   useEffect(() => {
@@ -20,7 +22,9 @@ export default function Home() {
         return;
       }
       try {
-        setUser(await me());
+        const currentUser = await me();
+        setUser(currentUser);
+        setConsents(await consentStatus());
       } catch {
         clearToken();
       } finally {
@@ -34,6 +38,22 @@ export default function Home() {
     clearToken();
     setUser(null);
     setPassage(null);
+    setConsents(null);
+  }
+
+  async function handleLogin(nextUser: User) {
+    try {
+      const nextConsents = await consentStatus();
+      setUser(nextUser);
+      setConsents(nextConsents);
+    } catch (error) {
+      clearToken();
+      throw error;
+    }
+  }
+
+  function handleAccountDeleted() {
+    logout();
   }
 
   return (
@@ -53,9 +73,13 @@ export default function Home() {
       </header>
       <main className="main">
         {!booted ? null : !user ? (
-          <LoginPanel onLogin={setUser} />
+          <LoginPanel onLogin={handleLogin} />
+        ) : !consents ? (
+          <p className="right-panel-empty">동의 상태를 확인하는 중입니다...</p>
+        ) : consents && !consents.has_required_consents ? (
+          <ConsentGate status={consents} onAccepted={setConsents} />
         ) : passage ? (
-          <StudyDashboard passage={passage} onNewPassage={() => setPassage(null)} onPassage={setPassage} />
+          <StudyDashboard passage={passage} onNewPassage={() => setPassage(null)} onPassage={setPassage} onAccountDeleted={handleAccountDeleted} />
         ) : (
           <PassageLanding onPassage={setPassage} />
         )}

@@ -5,6 +5,34 @@ export type User = {
   picture?: string | null;
 };
 
+export type ConsentRequirement = {
+  consent_type: string;
+  consent_version: string;
+  title: string;
+  body: string;
+  required: boolean;
+  operator_review_required: boolean;
+};
+
+export type ConsentStatus = {
+  has_required_consents: boolean;
+  required: ConsentRequirement[];
+  accepted: Array<{
+    consent_type: string;
+    consent_version: string;
+    accepted_at: string;
+  }>;
+};
+
+export type PrivacySummary = {
+  passages_count: number;
+  unknown_words_count: number;
+  pronunciation_records_count: number;
+  voice_profiles_count: number;
+  writing_submissions_count: number;
+  review_history_count: number;
+};
+
 export type Sentence = {
   id: string;
   sentence_index: number;
@@ -45,6 +73,7 @@ export type TtsResult = {
   provider: string;
   audio_url: string;
   spoken_words: Array<{ word: string; start_ms: number; end_ms: number }>;
+  fallback_message?: string;
 };
 
 export type WritingResult = {

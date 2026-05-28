@@ -43,6 +43,10 @@ try {
   assert(me?.email?.endsWith("@dimigo.hs.kr"), "/me did not return an allowed @dimigo.hs.kr user");
   console.log(`profile: ${me.email}`);
 
+  const consentStatus = await request("/me/consents");
+  assert(consentStatus.has_required_consents === true, "required beta privacy consents are not accepted; sign in through the app and complete the consent screen before running authenticated smoke");
+  console.log("consent: accepted current required versions");
+
   const passage = await request("/passages/analyze", {
     method: "POST",
     body: JSON.stringify({

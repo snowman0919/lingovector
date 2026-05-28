@@ -7,6 +7,7 @@ use axum::{
     Json, Router,
 };
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -17,8 +18,10 @@ use crate::{
         CurrentUser,
     },
     dto::{
-        AnalyzeRequest, ArxivRecommendation, DeleteVoiceResponse, LoginRequest, LoginResponse,
-        OpenArxivRequest, PassageDto, PassageListItem, PassageRow, PronunciationResponse,
+        AnalyzeRequest, ArxivRecommendation, ConsentAcceptRequest, ConsentRecord,
+        ConsentRequirement, ConsentStatusResponse, DeleteAccountResponse, DeleteVoiceDataResponse,
+        DeleteVoiceResponse, LoginRequest, LoginResponse, OpenArxivRequest, PassageDto,
+        PassageListItem, PassageRow, PrivacySummaryResponse, PronunciationResponse,
         ProviderDiagnosticsResponse, ProviderStatus, TtsRequest, TtsResponse, UserDto,
         VoiceProfileResponse, WordInspectRequest, WordInspectResponse, WritingPromptRequest,
         WritingPromptResponse, WritingResponse, WritingSubmitRequest,
@@ -27,12 +30,25 @@ use crate::{
     AppState,
 };
 
+const CURRENT_CONSENT_VERSION: &str = "beta-privacy-2026-05-v1";
+const CONSENT_COLLECTION: &str = "privacy_collection_use";
+const CONSENT_EXTERNAL: &str = "external_services_notice";
+const CONSENT_PROCESSING: &str = "processing_environment_notice";
+const CONSENT_VOICE: &str = "voice_data_cloning";
+const CONSENT_SENSITIVE: &str = "learning_voice_sensitive_data";
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/diagnostics/providers", get(provider_diagnostics))
         .route("/auth/google", post(login))
-        .route("/me", get(me))
+        .route("/me", get(me).delete(delete_me))
+        .route("/me/delete", post(delete_me))
+        .route("/me/withdraw-consent", post(withdraw_consent))
+        .route("/me/consents", get(consent_status))
+        .route("/me/consents/accept", post(accept_consents))
+        .route("/me/privacy-summary", get(privacy_summary))
+        .route("/me/voice-data", delete(delete_all_voice_data))
         .route("/passages", get(list_passages))
         .route("/passages/analyze", post(analyze_passage))
         .route("/passages/:id", get(get_passage))
@@ -73,11 +89,12 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<Value>) {
 
 async fn provider_diagnostics(
     State(state): State<AppState>,
-    CurrentUser(_user): CurrentUser,
+    CurrentUser(user): CurrentUser,
 ) -> AppResult<Json<ProviderDiagnosticsResponse>> {
     if !state.config.diagnostics_allowed() {
         return Err(AppError::NotFound);
     }
+    require_active_consents(&state, user.id).await?;
     let database_ready = sqlx::query_scalar::<_, i32>("SELECT 1")
         .fetch_one(&state.pool)
         .await
@@ -107,11 +124,97 @@ async fn me(CurrentUser(user): CurrentUser) -> Json<UserDto> {
     Json(user)
 }
 
+async fn consent_status(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+) -> AppResult<Json<ConsentStatusResponse>> {
+    Ok(Json(load_consent_status(&state, user.id).await?))
+}
+
+async fn accept_consents(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    headers: HeaderMap,
+    Json(payload): Json<ConsentAcceptRequest>,
+) -> AppResult<Json<ConsentStatusResponse>> {
+    let required = required_consent_requirements();
+    let missing = required
+        .iter()
+        .filter(|item| item.required)
+        .filter(|item| {
+            !payload
+                .accepted
+                .iter()
+                .any(|accepted| accepted == &item.consent_type)
+        })
+        .map(|item| item.title.clone())
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        return Err(AppError::BadRequest(format!(
+            "required consent items were not accepted: {}",
+            missing.join(", ")
+        )));
+    }
+
+    let audit_metadata = consent_audit_metadata(&headers);
+    for item in required {
+        sqlx::query(
+            r#"
+            INSERT INTO user_consents (id, user_id, consent_type, consent_version, audit_metadata)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (user_id, consent_type, consent_version) DO NOTHING
+            "#,
+        )
+        .bind(Uuid::new_v4())
+        .bind(user.id)
+        .bind(&item.consent_type)
+        .bind(&item.consent_version)
+        .bind(&audit_metadata)
+        .execute(&state.pool)
+        .await?;
+    }
+
+    Ok(Json(load_consent_status(&state, user.id).await?))
+}
+
+async fn privacy_summary(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+) -> AppResult<Json<PrivacySummaryResponse>> {
+    require_active_consents(&state, user.id).await?;
+    Ok(Json(load_privacy_summary(&state, user.id).await?))
+}
+
+async fn delete_all_voice_data(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+) -> AppResult<Json<DeleteVoiceDataResponse>> {
+    require_active_consents(&state, user.id).await?;
+    Ok(Json(delete_voice_data_for_user(&state, user.id).await?))
+}
+
+async fn delete_me(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+) -> AppResult<Json<DeleteAccountResponse>> {
+    delete_account_for_user(&state, user.id).await?;
+    Ok(Json(DeleteAccountResponse { deleted: true }))
+}
+
+async fn withdraw_consent(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+) -> AppResult<Json<DeleteAccountResponse>> {
+    delete_account_for_user(&state, user.id).await?;
+    Ok(Json(DeleteAccountResponse { deleted: true }))
+}
+
 async fn analyze_passage(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
     Json(payload): Json<AnalyzeRequest>,
 ) -> AppResult<Json<PassageDto>> {
+    require_active_consents(&state, user.id).await?;
     let text = payload.text.trim();
     if text.is_empty() {
         return Err(AppError::BadRequest("passage text is required".to_string()));
@@ -175,6 +278,7 @@ async fn list_passages(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
 ) -> AppResult<Json<Vec<PassageListItem>>> {
+    require_active_consents(&state, user.id).await?;
     let rows = sqlx::query(
         r#"
         SELECT p.id, p.title, p.source, p.created_at, COUNT(s.id) AS sentence_count
@@ -207,6 +311,7 @@ async fn get_passage(
     CurrentUser(user): CurrentUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<PassageDto>> {
+    require_active_consents(&state, user.id).await?;
     Ok(Json(load_passage(&state, user.id, id).await?))
 }
 
@@ -215,6 +320,7 @@ async fn inspect_word(
     CurrentUser(user): CurrentUser,
     Json(payload): Json<WordInspectRequest>,
 ) -> AppResult<Json<WordInspectResponse>> {
+    require_active_consents(&state, user.id).await?;
     let word = payload.word.trim().to_lowercase();
     if word.is_empty() {
         return Err(AppError::BadRequest("word is required".to_string()));
@@ -242,9 +348,10 @@ async fn inspect_word(
 
 async fn tts(
     State(state): State<AppState>,
-    CurrentUser(_user): CurrentUser,
+    CurrentUser(user): CurrentUser,
     Json(payload): Json<TtsRequest>,
 ) -> AppResult<Json<TtsResponse>> {
+    require_active_consents(&state, user.id).await?;
     if payload.text.trim().is_empty() {
         return Err(AppError::BadRequest("text is required".to_string()));
     }
@@ -269,6 +376,7 @@ async fn upload_voice(
     CurrentUser(user): CurrentUser,
     mut multipart: Multipart,
 ) -> AppResult<Json<VoiceProfileResponse>> {
+    require_active_consents(&state, user.id).await?;
     let mut consent_text = String::new();
     let mut name = "My voice".to_string();
     let mut audio_bytes = Vec::new();
@@ -358,6 +466,7 @@ async fn delete_voice(
     CurrentUser(user): CurrentUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<DeleteVoiceResponse>> {
+    require_active_consents(&state, user.id).await?;
     let row = sqlx::query("SELECT storage_path FROM voice_profiles WHERE id = $1 AND user_id = $2")
         .bind(id)
         .bind(user.id)
@@ -379,6 +488,7 @@ async fn score_pronunciation(
     CurrentUser(user): CurrentUser,
     mut multipart: Multipart,
 ) -> AppResult<Json<PronunciationResponse>> {
+    require_active_consents(&state, user.id).await?;
     let mut target_text = String::new();
     let mut sentence_id: Option<Uuid> = None;
     let mut audio_bytes = Vec::new();
@@ -449,6 +559,7 @@ async fn writing_prompt(
     CurrentUser(user): CurrentUser,
     Json(payload): Json<WritingPromptRequest>,
 ) -> AppResult<Json<WritingPromptResponse>> {
+    require_active_consents(&state, user.id).await?;
     let passage = load_passage(&state, user.id, payload.passage_id).await?;
     let prompt = state.llm.writing_prompt(&passage.text).await?;
     Ok(Json(WritingPromptResponse { prompt }))
@@ -459,6 +570,7 @@ async fn submit_writing(
     CurrentUser(user): CurrentUser,
     Json(payload): Json<WritingSubmitRequest>,
 ) -> AppResult<Json<WritingResponse>> {
+    require_active_consents(&state, user.id).await?;
     if payload.response.trim().is_empty() {
         return Err(AppError::BadRequest(
             "writing response is required".to_string(),
@@ -499,8 +611,9 @@ async fn submit_writing(
 
 async fn arxiv_recommendations(
     State(state): State<AppState>,
-    CurrentUser(_user): CurrentUser,
+    CurrentUser(user): CurrentUser,
 ) -> AppResult<Json<Vec<ArxivRecommendation>>> {
+    require_active_consents(&state, user.id).await?;
     Ok(Json(state.arxiv.recommendations().await?))
 }
 
@@ -509,6 +622,7 @@ async fn open_arxiv(
     CurrentUser(user): CurrentUser,
     Json(payload): Json<OpenArxivRequest>,
 ) -> AppResult<Json<PassageDto>> {
+    require_active_consents(&state, user.id).await?;
     let paper = state
         .arxiv
         .find(&payload.id)
@@ -594,6 +708,199 @@ async fn record_review(
     .bind(metadata)
     .execute(&state.pool)
     .await?;
+    Ok(())
+}
+
+fn required_consent_requirements() -> Vec<ConsentRequirement> {
+    vec![
+        consent_requirement(
+            CONSENT_COLLECTION,
+            "개인정보 수집 및 이용 동의",
+            "운영자 검토가 필요한 베타용 동의 초안입니다. Lingovector는 Google 계정 식별자, 이메일, 이름, 프로필 이미지, 로그인 상태, 지문 분석 기록, 모르는 단어, 영작 제출물, 발음 점수, 업로드한 음성 파일과 생성된 오디오 메타데이터를 학습 기능 제공과 베타 운영/보안 확인을 위해 저장할 수 있습니다. 이 정보는 계정 삭제 또는 필수 동의 철회 전까지 보관하는 것을 기본으로 하며, 운영상 필요한 최소 기록은 별도 검토가 필요합니다.",
+        ),
+        consent_requirement(
+            CONSENT_EXTERNAL,
+            "개인정보 제3자 제공 또는 외부 서비스 이용 고지/동의",
+            "Lingovector는 Google OAuth로 학교 계정을 확인하고, 설정에 따라 선택적 LLM provider, arXiv, pronunciation provider, storage provider 같은 외부 서비스를 사용할 수 있습니다. 학습 내용이 외부 provider로 전송될 수 있는 경우 운영자는 provider 설정과 전송 범위를 학생에게 안내해야 합니다. provider 이름과 API 설정은 운영 문서에서 확인합니다.",
+        ),
+        consent_requirement(
+            CONSENT_PROCESSING,
+            "개인정보 처리위탁/처리환경 고지",
+            "베타 서비스는 학교 내부 테스트를 위해 Linux server, Docker Compose, Cloudflare Tunnel, PostgreSQL, local storage 또는 운영자가 지정한 storage 환경에서 동작할 수 있습니다. 운영자는 서버 접근 권한, 백업, 로그, storage 보관 위치를 최소 권한으로 관리해야 합니다.",
+        ),
+        consent_requirement(
+            CONSENT_VOICE,
+            "음성 데이터 및 voice cloning 관련 별도 동의",
+            "발음 연습과 voice cloning 테스트를 위해 사용자가 업로드한 음성 샘플, 동의 문구, 동의 버전, 파일 메타데이터가 저장될 수 있습니다. 반드시 본인 목소리 또는 명시적 허락을 받은 목소리만 업로드해야 하며, 복제 음성을 다른 사람을 사칭하는 데 사용하면 안 됩니다. 실제 학생 음성 업로드는 동의 흐름 검증 후 진행해야 합니다.",
+        ),
+        consent_requirement(
+            CONSENT_SENSITIVE,
+            "민감할 수 있는 학습/음성 데이터 저장 및 삭제 안내",
+            "영작 답안, 발음 기록, 모르는 단어, 음성 샘플은 개인의 학습 상태를 드러낼 수 있습니다. 사용자는 설정에서 음성 데이터 삭제, 개인정보 제공 동의 철회, 계정 삭제를 요청할 수 있습니다. 필수 동의를 철회하면 베타 서비스 제공이 어려우므로 계정과 연결된 개인 데이터 삭제 흐름으로 처리됩니다.",
+        ),
+    ]
+}
+
+fn consent_requirement(consent_type: &str, title: &str, body: &str) -> ConsentRequirement {
+    ConsentRequirement {
+        consent_type: consent_type.to_string(),
+        consent_version: CURRENT_CONSENT_VERSION.to_string(),
+        title: title.to_string(),
+        body: body.to_string(),
+        required: true,
+        operator_review_required: true,
+    }
+}
+
+async fn load_consent_status(state: &AppState, user_id: Uuid) -> AppResult<ConsentStatusResponse> {
+    let accepted = sqlx::query_as::<_, ConsentRecord>(
+        r#"
+        SELECT consent_type, consent_version, accepted_at
+        FROM user_consents
+        WHERE user_id = $1
+        ORDER BY accepted_at DESC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(&state.pool)
+    .await?;
+    let required = required_consent_requirements();
+    let has_required_consents = required.iter().filter(|item| item.required).all(|item| {
+        accepted.iter().any(|record| {
+            record.consent_type == item.consent_type
+                && record.consent_version == item.consent_version
+        })
+    });
+    Ok(ConsentStatusResponse {
+        has_required_consents,
+        required,
+        accepted,
+    })
+}
+
+async fn require_active_consents(state: &AppState, user_id: Uuid) -> AppResult<()> {
+    if load_consent_status(state, user_id)
+        .await?
+        .has_required_consents
+    {
+        Ok(())
+    } else {
+        Err(AppError::ConsentRequired)
+    }
+}
+
+fn consent_audit_metadata(headers: &HeaderMap) -> Value {
+    let ip_hash = headers
+        .get("x-forwarded-for")
+        .or_else(|| headers.get("x-real-ip"))
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(',').next())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(hash_metadata_value);
+    let user_agent_hash = headers
+        .get(header::USER_AGENT)
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+        .map(hash_metadata_value);
+    json!({
+        "ip_hash": ip_hash,
+        "user_agent_hash": user_agent_hash,
+        "metadata_policy": "hashed-minimal",
+    })
+}
+
+fn hash_metadata_value(value: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(value.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+async fn load_privacy_summary(
+    state: &AppState,
+    user_id: Uuid,
+) -> AppResult<PrivacySummaryResponse> {
+    let passages_count = count_user_rows(state, "passages", user_id).await?;
+    let unknown_words_count = count_user_rows(state, "unknown_words", user_id).await?;
+    let pronunciation_records_count =
+        count_user_rows(state, "pronunciation_records", user_id).await?;
+    let voice_profiles_count = count_user_rows(state, "voice_profiles", user_id).await?;
+    let writing_submissions_count = count_user_rows(state, "writing_submissions", user_id).await?;
+    let review_history_count = count_user_rows(state, "review_history", user_id).await?;
+    Ok(PrivacySummaryResponse {
+        passages_count,
+        unknown_words_count,
+        pronunciation_records_count,
+        voice_profiles_count,
+        writing_submissions_count,
+        review_history_count,
+    })
+}
+
+async fn count_user_rows(state: &AppState, table: &str, user_id: Uuid) -> AppResult<i64> {
+    let sql = format!("SELECT COUNT(*) FROM {table} WHERE user_id = $1");
+    Ok(sqlx::query_scalar::<_, i64>(&sql)
+        .bind(user_id)
+        .fetch_one(&state.pool)
+        .await?)
+}
+
+async fn delete_voice_data_for_user(
+    state: &AppState,
+    user_id: Uuid,
+) -> AppResult<DeleteVoiceDataResponse> {
+    let rows = sqlx::query("SELECT storage_path FROM voice_profiles WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_all(&state.pool)
+        .await?;
+    let storage_paths = rows
+        .iter()
+        .map(|row| row.get::<String, _>("storage_path"))
+        .collect::<Vec<_>>();
+    for path in &storage_paths {
+        if let Err(err) = state.storage.delete(path).await {
+            tracing::warn!(storage_namespace = "voices", error = %err, "voice file delete failed");
+        }
+    }
+    let deleted = sqlx::query("DELETE FROM voice_profiles WHERE user_id = $1")
+        .bind(user_id)
+        .execute(&state.pool)
+        .await?
+        .rows_affected();
+    Ok(DeleteVoiceDataResponse {
+        deleted_profiles: deleted,
+        attempted_file_deletions: storage_paths.len(),
+    })
+}
+
+async fn delete_account_for_user(state: &AppState, user_id: Uuid) -> AppResult<()> {
+    let voice_rows = sqlx::query("SELECT storage_path FROM voice_profiles WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_all(&state.pool)
+        .await?;
+    let pronunciation_rows =
+        sqlx::query("SELECT audio_path FROM pronunciation_records WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_all(&state.pool)
+            .await?;
+    let storage_paths = voice_rows
+        .iter()
+        .map(|row| row.get::<String, _>("storage_path"))
+        .chain(
+            pronunciation_rows
+                .iter()
+                .map(|row| row.get::<String, _>("audio_path")),
+        )
+        .collect::<Vec<_>>();
+    for path in &storage_paths {
+        if let Err(err) = state.storage.delete(path).await {
+            tracing::warn!(error = %err, "user-owned file delete failed during account deletion");
+        }
+    }
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(user_id)
+        .execute(&state.pool)
+        .await?;
     Ok(())
 }
 
@@ -826,5 +1133,33 @@ mod tests {
         assert_eq!(arxiv.mode, "failed");
         assert_eq!(arxiv.metadata["cache"]["source"], "fallback");
         assert_eq!(arxiv.metadata["categories"].as_array().unwrap().len(), 6);
+    }
+
+    #[test]
+    fn consent_requirements_cover_current_beta_sections() {
+        let required = required_consent_requirements();
+        assert_eq!(required.len(), 5);
+        assert!(required.iter().all(|item| item.required));
+        assert!(required
+            .iter()
+            .all(|item| item.consent_version == CURRENT_CONSENT_VERSION));
+        assert!(required
+            .iter()
+            .any(|item| item.consent_type == CONSENT_VOICE && item.body.contains("사칭")));
+    }
+
+    #[test]
+    fn consent_audit_metadata_hashes_raw_headers() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", HeaderValue::from_static("203.0.113.10"));
+        headers.insert(
+            header::USER_AGENT,
+            HeaderValue::from_static("LingovectorTest/1.0"),
+        );
+        let metadata = consent_audit_metadata(&headers);
+        let payload = serde_json::to_string(&metadata).unwrap();
+        assert!(!payload.contains("203.0.113.10"));
+        assert!(!payload.contains("LingovectorTest"));
+        assert_eq!(metadata["metadata_policy"].as_str(), Some("hashed-minimal"));
     }
 }

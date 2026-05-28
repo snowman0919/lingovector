@@ -7,7 +7,8 @@ This document describes a production deployment rehearsal for Lingovector. It is
 - Next.js frontend runs as a production Node server on `127.0.0.1:3000`.
 - Rust Axum API runs on `127.0.0.1:8080`.
 - PostgreSQL runs as a managed database or a server-local PostgreSQL service/container.
-- Runtime storage stores generated TTS audio and uploaded voice samples under `STORAGE_DIR`; local disk is acceptable for a small rehearsal, but object storage should replace local disk before larger use.
+- Runtime storage stores server-generated TTS/pronunciation audio and uploaded voice samples under `STORAGE_DIR`; local disk is acceptable for a small rehearsal, but object storage should replace local disk before larger use.
+- Browser-side Supertonic ONNX TTS is the preferred beta direction when model assets are deployed; server-side Supertone/Supertonic remains an optional fallback.
 - Cloudflare Tunnel is the recommended public entrypoint. Do not assume inbound public `80` or `443` ports are open. Nginx/Caddy can still be used locally if a future single-domain reverse proxy is added.
 
 Student-facing UI is Korean for the Dimigo beta. English passages, English examples, definitions, generated Simple English explanations, paper titles/abstracts, and student-written English remain in English so Lingovector teaches English-first thinking with Korean support instead of translation memorization.
@@ -49,11 +50,14 @@ Required frontend build values:
 - `NEXT_PUBLIC_API_BASE_URL`
 - `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
 - `NEXT_PUBLIC_DIAGNOSTICS_ENABLED=false`
+- `NEXT_PUBLIC_TTS_MODE`
+- `NEXT_PUBLIC_SUPERTONIC_ONNX_MODEL_URL` when browser ONNX is used
+- `NEXT_PUBLIC_SUPERTONIC_ONNX_CONFIG_URL` when browser ONNX is used
 
 Optional real provider values:
 
 - `LLM_API_URL`, `LLM_API_KEY`, `LLM_MODEL`
-- `SUPERTONE_API_KEY`, `SUPERTONE_BASE_URL`
+- `SUPERTONE_API_KEY`, `SUPERTONE_BASE_URL` for optional server fallback
 - `SUPERTONE_LOCAL_TTS_URL`
 - `SUPERTONE_LOCAL_VOICE_URL`
 - `PRONUNCIATION_PROVIDER_URL`
@@ -247,6 +251,9 @@ Use [cloudflare-tunnel.md](cloudflare-tunnel.md) for the full Cloudflare Tunnel 
 - [ ] Cloudflare Tunnel routes HTTPS to `web:3000` and `api:8080`, or systemd `cloudflared` routes to `127.0.0.1:3000` and `127.0.0.1:8080`.
 - [ ] `/health` returns OK.
 - [ ] Manual `@dimigo.hs.kr` login succeeds.
+- [ ] First-login consent gate is reviewed and accepted by the operator test account.
+- [ ] `개인정보 및 계정` can delete voice data and delete a test account.
+- [ ] Browser ONNX TTS assets are deployed if `NEXT_PUBLIC_TTS_MODE=browser_onnx`; otherwise server/mock fallback is intentionally selected.
 - [ ] Voice upload/delete beta privacy copy is visible.
 
 ## Rollback Checklist

@@ -66,6 +66,10 @@ try {
   assert(me.body?.email?.endsWith("@dimigo.hs.kr"), "authenticated /me did not return an allowed school account");
   console.log(`auth: verified school account ${me.body.email}`);
 
+  const consentStatus = await request("/me/consents");
+  assert(consentStatus.body?.has_required_consents === true, "required beta privacy consents are not accepted; complete the Korean consent screen in staging before running authenticated smoke");
+  console.log("consent: accepted current required versions");
+
   const diagnostics = await request("/diagnostics/providers", {}, TOKEN, [404]);
   if (diagnostics.status === 404) {
     console.log("diagnostics: disabled, expected default for staging");

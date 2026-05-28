@@ -11,6 +11,7 @@ The main student UI is Korean for Dimigo beta users. English passages, examples,
 - Database: PostgreSQL via SQLx migrations
 - Auth: Google ID token verification on the backend, restricted to verified `@dimigo.hs.kr` accounts
 - Providers: trait-based LLM, TTS, voice cloning, pronunciation, and arXiv providers
+- Preferred beta TTS: browser-side Supertonic ONNX via ONNX Runtime Web when model assets are deployed
 - Default mode: mock providers when external API keys or local provider URLs are absent
 
 ## Run Locally on macOS
@@ -77,6 +78,8 @@ dev:student@dimigo.hs.kr
 
 The dev token is accepted only when `DEV_AUTH=true`. Real Google login still requires `GOOGLE_CLIENT_ID` and `NEXT_PUBLIC_GOOGLE_CLIENT_ID`.
 
+On first login, users must accept the current Korean beta privacy consent sections before normal learning routes are available. If the consent version changes, the app requires re-consent.
+
 ## Environment Variables
 
 - `ENVIRONMENT`: use `development`, `test`, or `production`. Production enables fail-fast safety validation.
@@ -87,7 +90,10 @@ The dev token is accepted only when `DEV_AUTH=true`. Real Google login still req
 - `ALLOWED_EMAIL_DOMAIN`: must be `dimigo.hs.kr` for the school beta.
 - `CORS_ORIGINS`: comma-separated frontend origins. Production requires explicit `https://` origins, not localhost or `*`.
 - `STORAGE_DIR`: local audio and voice sample storage directory.
-- `SUPERTONE_API_KEY`: enables Supertone/Supertonic-3 API-mode TTS and voice paths. Empty uses mocks unless a local URL is set.
+- `NEXT_PUBLIC_TTS_MODE`: `browser_onnx`, `server`, or `mock`. Browser ONNX is preferred for beta once model/schema files are deployed.
+- `NEXT_PUBLIC_SUPERTONIC_ONNX_MODEL_URL`: public ONNX model URL, default `/models/supertonic/model.onnx`.
+- `NEXT_PUBLIC_SUPERTONIC_ONNX_CONFIG_URL`: public adapter/schema config URL. Required before real browser ONNX audio generation.
+- `SUPERTONE_API_KEY`: optional server-side Supertone/Supertonic fallback for TTS and voice paths. Empty uses mocks unless a local URL is set.
 - `SUPERTONE_BASE_URL`: Supertone API base URL.
 - `SUPERTONE_LOCAL_TTS_URL`: optional local TTS server endpoint returning audio bytes.
 - `SUPERTONE_LOCAL_VOICE_URL`: optional local voice-cloning endpoint returning `voice_id` or `id`.
@@ -112,6 +118,8 @@ Production startup fails fast when required beta settings are missing or unsafe:
 - `JWT_SECRET=dev-only-change-me`, short JWT secrets, wildcard CORS, localhost CORS, and non-HTTPS production CORS origins are rejected.
 - `/diagnostics/providers` is disabled in production unless `DIAGNOSTICS_ENABLED=true`.
 - The frontend diagnostics panel is hidden in production unless `NEXT_PUBLIC_DIAGNOSTICS_ENABLED=true`.
+- Required privacy consent is enforced before protected learning routes.
+- Users can delete voice data, withdraw required consent, or delete their account from `개인정보 및 계정`.
 
 Mock providers remain visible in developer diagnostics and smoke scripts. The student dashboard avoids exposing provider jargon during normal production use.
 
@@ -166,7 +174,14 @@ All provider integrations are env-gated. Leave values empty to use mock provider
 
 Review JSON outputs under `local-output/learning-quality/` for simple-English-first explanations, detailed Korean support, nuance, meaning flow, and conservative morphology.
 
-### Supertone/Supertonic TTS
+### Browser Supertonic ONNX TTS
+
+- Set `NEXT_PUBLIC_TTS_MODE=browser_onnx`.
+- Deploy model/config assets outside git. Do not commit ONNX model files.
+- See [docs/supertonic-onnx.md](docs/supertonic-onnx.md).
+- If the schema/model is absent, the UI shows a Korean fallback message and uses server/mock TTS.
+
+### Server-side Supertone/Supertonic Fallback
 
 - For a local server, set `SUPERTONE_LOCAL_TTS_URL` to the local endpoint that returns audio bytes.
 - For API mode, set `SUPERTONE_API_KEY` and optionally `SUPERTONE_BASE_URL`.
@@ -209,6 +224,8 @@ Use [docs/beta-checklist.md](docs/beta-checklist.md) before inviting students.
 ## Deployment Rehearsal
 
 Use [docs/linux-server-runbook.md](docs/linux-server-runbook.md) and [docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md) for the Linux server plus Cloudflare Tunnel path. Use [docs/staging-runbook.md](docs/staging-runbook.md) for production-like staging rehearsal. Use [docs/oauth-setup.md](docs/oauth-setup.md) and [docs/provider-onboarding.md](docs/provider-onboarding.md) for real OAuth/provider setup. Use [docs/beta-operator-handoff.md](docs/beta-operator-handoff.md) for the human handoff checklist. Use [docs/deployment.md](docs/deployment.md) for the deployment rehearsal runbook. Use [docs/operations-checklist.md](docs/operations-checklist.md) during each beta deploy window.
+
+Review [docs/privacy-consent-draft.md](docs/privacy-consent-draft.md) before beta. It is an operator-review-required draft, not legal advice.
 
 ## Implemented MVP Features
 

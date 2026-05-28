@@ -24,6 +24,13 @@ const login = await request("/auth/google", {
   body: JSON.stringify({ id_token: "dev:student@dimigo.hs.kr" }),
 });
 const token = login.access_token;
+const consentStatus = await request("/me/consents", {}, token);
+if (!consentStatus.has_required_consents) {
+  await request("/me/consents/accept", {
+    method: "POST",
+    body: JSON.stringify({ accepted: consentStatus.required.map((item) => item.consent_type) }),
+  }, token);
+}
 
 const sentence = "Lingovector helps students hear the logic of English.";
 const tts = await request("/tts", { method: "POST", body: JSON.stringify({ text: sentence }) }, token);

@@ -35,6 +35,11 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .app-shell {
   min-height: 100vh;
   display: flex;
@@ -434,6 +439,84 @@ button {
   border-radius: 7px;
   background: #fffbeb;
   color: #78350f;
+}
+
+.consent-page {
+  max-width: 920px;
+  margin: 18px auto;
+  padding: 22px;
+}
+
+.consent-heading {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.consent-heading h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+
+.consent-heading p,
+.consent-item p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.consent-list,
+.privacy-settings,
+.privacy-grid,
+.compact-list {
+  display: grid;
+  gap: 12px;
+}
+
+.consent-item {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+}
+
+.consent-item small {
+  display: block;
+  color: var(--accent-2);
+  font-weight: 700;
+  margin: 3px 0 7px;
+}
+
+.consent-actions {
+  margin-top: 16px;
+}
+
+.privacy-grid {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.compact-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.compact-list li {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 10px;
+}
+
+.compact-list span {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .provider-grid {

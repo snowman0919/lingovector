@@ -11,6 +11,8 @@ pub enum AppError {
     Unauthorized,
     #[error("forbidden: {0}")]
     Forbidden(String),
+    #[error("required privacy consent has not been accepted")]
+    ConsentRequired,
     #[error("bad request: {0}")]
     BadRequest(String),
     #[error("not found")]
@@ -36,6 +38,7 @@ impl IntoResponse for AppError {
         let (status, code) = match self {
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
             AppError::Forbidden(_) => (StatusCode::FORBIDDEN, "forbidden"),
+            AppError::ConsentRequired => (StatusCode::FORBIDDEN, "consent_required"),
             AppError::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
             AppError::NotFound => (StatusCode::NOT_FOUND, "not_found"),
             AppError::Sqlx(_) => (StatusCode::INTERNAL_SERVER_ERROR, "database_error"),

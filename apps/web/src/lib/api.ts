@@ -1,4 +1,4 @@
-import type { ArxivRecommendation, Passage, ProviderDiagnostics, TtsResult, User, VoiceProfile, WordInspect, WritingResult } from "./types";
+import type { ArxivRecommendation, ConsentStatus, Passage, PrivacySummary, ProviderDiagnostics, TtsResult, User, VoiceProfile, WordInspect, WritingResult } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8080";
 const TOKEN_KEY = "lingovector_token";
@@ -29,7 +29,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export const mediaUrl = (path: string) => (path.startsWith("http") ? path : `${API_BASE}${path}`);
+export const mediaUrl = (path: string) => (path.startsWith("http") || path.startsWith("data:") ? path : `${API_BASE}${path}`);
 
 export async function login(idToken: string): Promise<{ access_token: string; user: User }> {
   return request("/auth/google", { method: "POST", body: JSON.stringify({ id_token: idToken }) });
@@ -37,6 +37,30 @@ export async function login(idToken: string): Promise<{ access_token: string; us
 
 export async function me(): Promise<User> {
   return request("/me");
+}
+
+export async function consentStatus(): Promise<ConsentStatus> {
+  return request("/me/consents");
+}
+
+export async function acceptConsents(accepted: string[]): Promise<ConsentStatus> {
+  return request("/me/consents/accept", { method: "POST", body: JSON.stringify({ accepted }) });
+}
+
+export async function privacySummary(): Promise<PrivacySummary> {
+  return request("/me/privacy-summary");
+}
+
+export async function deleteAllVoiceData(): Promise<{ deleted_profiles: number; attempted_file_deletions: number }> {
+  return request("/me/voice-data", { method: "DELETE" });
+}
+
+export async function deleteAccount(): Promise<{ deleted: boolean }> {
+  return request("/me", { method: "DELETE" });
+}
+
+export async function withdrawConsent(): Promise<{ deleted: boolean }> {
+  return request("/me/withdraw-consent", { method: "POST" });
 }
 
 export async function analyzePassage(text: string, title?: string, source = "paste"): Promise<Passage> {

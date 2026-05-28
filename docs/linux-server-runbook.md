@@ -270,3 +270,5 @@ Do not run `down --volumes` unless the staging owner confirms all staging DB/sto
 - `DIAGNOSTICS_ENABLED=false` in production except for short authenticated checks.
 - Use final HTTPS web/API origins for OAuth, CORS, and frontend API configuration.
 - Keep `STORAGE_DIR` persistent for voice/audio files, and back it up only according to the approved privacy policy.
+- Browser ONNX TTS model files must be deployed outside git if `NEXT_PUBLIC_TTS_MODE=browser_onnx`.
+- Verify the first-login consent gate, voice data deletion, and account deletion with a staging/test account before allowing real student voice uploads.

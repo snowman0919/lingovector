@@ -31,6 +31,7 @@ Use this checklist before a small school-internal beta. Do not paste secrets int
 - [ ] `CORS_ORIGINS` contains only explicit `https://` frontend origins
 - [ ] `DIAGNOSTICS_ENABLED=false` unless an admin-only diagnostics check is planned
 - [ ] `NEXT_PUBLIC_DIAGNOSTICS_ENABLED=false` for normal student builds
+- [ ] `NEXT_PUBLIC_TTS_MODE=browser_onnx` is set only when ONNX model/schema files are deployed; otherwise use `server` or `mock` intentionally
 
 ## Auth Verification
 
@@ -38,6 +39,8 @@ Use this checklist before a small school-internal beta. Do not paste secrets int
 - [ ] Authorized JavaScript origin includes the local origin for local testing
 - [ ] Authorized JavaScript origin includes the production frontend origin
 - [ ] A verified `@dimigo.hs.kr` account can sign in
+- [ ] First login shows the Korean required consent gate before dashboard access
+- [ ] Completing all required consent checkboxes activates the app
 - [ ] A non-`@dimigo.hs.kr` account is rejected with a clear message
 - [ ] An unverified Google email is rejected
 - [ ] Production build does not show the local development token input
@@ -62,6 +65,9 @@ Use this checklist before a small school-internal beta. Do not paste secrets int
 - [ ] UI states cloned voices must not be used to impersonate others
 - [ ] Voice upload stores consent text, consent version, file metadata, and the audio sample
 - [ ] Voice deletion behavior is documented
+- [ ] `개인정보 및 계정` shows consent history, voice data controls, consent withdrawal, and account deletion
+- [ ] Account deletion or required-consent withdrawal is verified with a test account
+- [ ] Do not upload real student voice until the consent gate and deletion flow are verified
 - [ ] Local storage path and retention expectations are documented for beta operators
 - [ ] Diagnostics output does not include secrets, tokens, or sensitive request bodies
 - [ ] Logs include only sanitized provider metadata
@@ -70,7 +76,8 @@ Use this checklist before a small school-internal beta. Do not paste secrets int
 
 - [ ] LLM provider configured or mock mode accepted for beta
 - [ ] `npm run test:learning-quality` output reviewed under `local-output/learning-quality/`
-- [ ] Supertone/Supertonic TTS configured or mock mode accepted for beta
+- [ ] Browser Supertonic ONNX TTS is configured or server/mock fallback is accepted for beta
+- [ ] Server-side Supertone/Supertonic TTS is treated as optional fallback, not the default assumption
 - [ ] `npm run test:tts-smoke` confirms audio URL and word timing metadata
 - [ ] Voice cloning provider configured or mock mode accepted for beta
 - [ ] Pronunciation provider configured or mock mode accepted for beta

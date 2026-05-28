@@ -20,7 +20,7 @@ declare global {
   }
 }
 
-export function LoginPanel({ onLogin }: { onLogin: (user: User) => void }) {
+export function LoginPanel({ onLogin }: { onLogin: (user: User) => void | Promise<void> }) {
   const [tokenInput, setTokenInput] = useState("dev:student@dimigo.hs.kr");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -31,7 +31,7 @@ export function LoginPanel({ onLogin }: { onLogin: (user: User) => void }) {
     try {
       const result = await login(idToken);
       setToken(result.access_token);
-      onLogin(result.user);
+      await onLogin(result.user);
     } catch (err) {
       setError(readableLoginError(err));
     } finally {

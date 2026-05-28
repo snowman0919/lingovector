@@ -3,6 +3,7 @@
 import {
   Activity,
   FilePlus2,
+  KeyRound,
   Mic,
   Pause,
   Play,
@@ -17,20 +18,25 @@ import { useMemo, useRef, useState } from "react";
 import {
   analyzePassage,
   arxivRecommendations,
+  consentStatus,
+  deleteAccount,
+  deleteAllVoiceData,
   deleteVoice,
   inspectWord,
   mediaUrl,
   openArxiv,
+  privacySummary,
   providerDiagnostics,
   scorePronunciation,
   submitWriting,
-  synthesize,
   uploadVoice,
+  withdrawConsent,
   writingPrompt,
 } from "@/lib/api";
-import type { ArxivRecommendation, Passage, ProviderDiagnostics, Sentence, TtsResult, VoiceProfile, WordInspect, WritingResult } from "@/lib/types";
+import { configuredTtsMode, synthesizeForBrowser, ttsModeLabel } from "@/lib/tts";
+import type { ArxivRecommendation, ConsentStatus, Passage, PrivacySummary, ProviderDiagnostics, Sentence, TtsResult, VoiceProfile, WordInspect, WritingResult } from "@/lib/types";
 
-type Tab = "audio" | "pronunciation" | "writing" | "arxiv" | "diagnostics" | "review";
+type Tab = "audio" | "pronunciation" | "writing" | "arxiv" | "privacy" | "diagnostics" | "review";
 
 const DIAGNOSTICS_VISIBLE = process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_DIAGNOSTICS_ENABLED === "true";
 const DEV_REVIEW_VISIBLE = process.env.NODE_ENV !== "production";
@@ -39,6 +45,7 @@ const TAB_LABELS: Record<Tab, string> = {
   pronunciation: "발음 연습",
   writing: "영작 튜터",
   arxiv: "논문 추천",
+  privacy: "개인정보 및 계정",
   diagnostics: "개발자 진단",
   review: "품질 리뷰",
 };
@@ -79,10 +86,12 @@ export function StudyDashboard({
   passage,
   onNewPassage,
   onPassage,
+  onAccountDeleted,
 }: {
   passage: Passage;
   onNewPassage: () => void;
   onPassage: (passage: Passage) => void;
+  onAccountDeleted: () => void;
 }) {
   const [selectedSentenceId, setSelectedSentenceId] = useState(passage.sentences[0]?.id ?? "");
   const selected = useMemo(
@@ -92,7 +101,7 @@ export function StudyDashboard({
   const [word, setWord] = useState<WordInspect | null>(null);
   const [tab, setTab] = useState<Tab>("audio");
   const [busy, setBusy] = useState("");
-  const tabs: Tab[] = ["audio", "pronunciation", "writing", "arxiv"];
+  const tabs: Tab[] = ["audio", "pronunciation", "writing", "arxiv", "privacy"];
   if (DIAGNOSTICS_VISIBLE) tabs.push("diagnostics");
   if (DEV_REVIEW_VISIBLE) tabs.push("review");
 
@@ -183,6 +192,7 @@ export function StudyDashboard({
             {tab === "pronunciation" && selected ? <PronunciationPractice sentence={selected} /> : null}
             {tab === "writing" ? <WritingTutor passage={passage} /> : null}
             {tab === "arxiv" ? <ArxivLearning onPassage={onPassage} /> : null}
+            {tab === "privacy" ? <PrivacySettings onAccountDeleted={onAccountDeleted} /> : null}
             {tab === "diagnostics" && DIAGNOSTICS_VISIBLE ? <ProviderDiagnosticsPanel /> : null}
             {tab === "review" && DEV_REVIEW_VISIBLE ? <LearningQualityReview /> : null}
           </div>
@@ -287,7 +297,7 @@ function AudioPractice({ sentence }: { sentence: Sentence }) {
     setBusy(true);
     setError("");
     try {
-      const result = await synthesize(sentence.text);
+      const result = await synthesizeForBrowser(sentence.text);
       setTts(result);
       setTimeout(() => audioRef.current?.play(), 50);
       result.spoken_words.forEach((word) => {
@@ -308,8 +318,10 @@ function AudioPractice({ sentence }: { sentence: Sentence }) {
           <button className="primary" onClick={play}>
             <Volume2 size={17} /> {busy ? "준비 중..." : "문장 재생"}
           </button>
-          {tts?.provider === "mock" && DIAGNOSTICS_VISIBLE ? <span>개발용 샘플 음성 (mock)</span> : null}
+          <span>온디바이스 TTS 상태: {ttsModeLabel()} · provider: {tts?.provider ?? "대기 중"}</span>
+          {(tts?.provider === "mock" || tts?.provider === "browser-mock") && DIAGNOSTICS_VISIBLE ? <span>개발용 샘플 음성 (mock)</span> : null}
         </div>
+        {tts?.fallback_message ? <p className="helper-text">{tts.fallback_message}</p> : null}
         {error ? <div className="error">{error}</div> : null}
         {tts ? <audio ref={audioRef} controls src={mediaUrl(tts.audio_url)} /> : null}
       </div>
@@ -694,6 +706,139 @@ function LearningQualityReview() {
       ) : (
         <p className="right-panel-empty">로컬 리뷰 모드는 커밋된 샘플 지문을 문장 분석, 단어 분석, 영작 피드백 흐름에 넣어 학습 품질을 직접 확인하게 해 줍니다.</p>
       )}
+    </div>
+  );
+}
+
+function PrivacySettings({ onAccountDeleted }: { onAccountDeleted: () => void }) {
+  const [summary, setSummary] = useState<PrivacySummary | null>(null);
+  const [consents, setConsents] = useState<ConsentStatus | null>(null);
+  const [confirm, setConfirm] = useState("");
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState("");
+
+  async function load() {
+    setBusy("load");
+    setError("");
+    try {
+      const [nextSummary, nextConsents] = await Promise.all([privacySummary(), consentStatus()]);
+      setSummary(nextSummary);
+      setConsents(nextConsents);
+      setStatus("개인정보 상태를 불러왔습니다.");
+    } catch {
+      setError("개인정보 상태를 불러오지 못했습니다.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function removeVoiceData() {
+    setBusy("voice");
+    setError("");
+    try {
+      const result = await deleteAllVoiceData();
+      setStatus(`음성 데이터 삭제를 처리했습니다. 프로필 ${result.deleted_profiles}개, 파일 삭제 시도 ${result.attempted_file_deletions}건.`);
+      await load();
+    } catch {
+      setError("음성 데이터를 삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function removeAccount(kind: "delete" | "withdraw") {
+    if (confirm !== "삭제") {
+      setError("계정을 삭제하려면 확인 칸에 '삭제'를 입력해 주세요.");
+      return;
+    }
+    setBusy(kind);
+    setError("");
+    try {
+      if (kind === "withdraw") {
+        await withdrawConsent();
+      } else {
+        await deleteAccount();
+      }
+      onAccountDeleted();
+    } catch {
+      setError("계정 삭제를 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <div className="privacy-settings">
+      <div className="toolbar">
+        <button className="secondary" onClick={load}>
+          <KeyRound size={17} /> {busy === "load" ? "불러오는 중..." : "동의 내역과 저장 데이터 확인"}
+        </button>
+        <span>온디바이스 TTS 상태: {ttsModeLabel(configuredTtsMode())}</span>
+      </div>
+      <div className="consent-box">
+        Lingovector는 필수 동의가 있어야 학습 기능을 제공할 수 있습니다. 개인정보 제공 동의를 철회하면 베타 서비스 이용이 중단되고 계정 삭제와 같은 흐름으로 처리됩니다.
+      </div>
+      {status ? <p className="helper-text">{status}</p> : null}
+      {error ? <div className="error">{error}</div> : null}
+      <div className="privacy-grid">
+        <section className="analysis-card">
+          <h3>동의 내역</h3>
+          {consents ? (
+            <ul className="compact-list">
+              {consents.required.map((item) => {
+                const accepted = consents.accepted.find((record) => record.consent_type === item.consent_type && record.consent_version === item.consent_version);
+                return (
+                  <li key={item.consent_type}>
+                    <b>{item.title}</b>
+                    <span>{accepted ? `동의 완료: ${new Date(accepted.accepted_at).toLocaleString("ko-KR")}` : "현재 버전 동의 필요"}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="right-panel-empty">버튼을 눌러 현재 동의 내역을 확인하세요.</p>
+          )}
+        </section>
+        <section className="analysis-card">
+          <h3>학습 기록 삭제 안내</h3>
+          {summary ? (
+            <div className="score-grid">
+              <div className="score-card"><b>분석 지문</b> {summary.passages_count}</div>
+              <div className="score-card"><b>저장 단어</b> {summary.unknown_words_count}</div>
+              <div className="score-card"><b>발음 기록</b> {summary.pronunciation_records_count}</div>
+              <div className="score-card"><b>음성 프로필</b> {summary.voice_profiles_count}</div>
+              <div className="score-card"><b>영작 제출</b> {summary.writing_submissions_count}</div>
+              <div className="score-card"><b>복습 기록</b> {summary.review_history_count}</div>
+            </div>
+          ) : (
+            <p className="right-panel-empty">저장된 학습 기록 개수를 확인할 수 있습니다. 계정 삭제 시 연결된 개인 데이터 삭제를 시도합니다.</p>
+          )}
+        </section>
+        <section className="analysis-card">
+          <h3>음성 데이터 관리</h3>
+          <p>업로드한 voice profile DB 기록과 연결된 저장 파일 삭제를 시도합니다. 다른 기능에서 생성했지만 계정과 직접 연결되지 않은 로컬 출력 파일은 운영자 cleanup 절차가 필요할 수 있습니다.</p>
+          <button className="danger" onClick={removeVoiceData}>
+            <Trash2 size={17} /> {busy === "voice" ? "삭제 중..." : "음성 데이터 삭제"}
+          </button>
+        </section>
+        <section className="analysis-card">
+          <h3>개인정보 제공 동의 철회 및 계정 삭제</h3>
+          <p>필수 동의를 철회하면 서비스를 계속 제공할 수 없어 계정과 개인 학습 데이터 삭제로 처리됩니다. 계속하려면 아래 칸에 &quot;삭제&quot;를 입력하세요.</p>
+          <div className="field">
+            <label htmlFor="delete-confirm">삭제 확인</label>
+            <input id="delete-confirm" value={confirm} onChange={(event) => setConfirm(event.target.value)} placeholder="삭제" />
+          </div>
+          <div className="toolbar">
+            <button className="danger" onClick={() => removeAccount("withdraw")}>
+              <Trash2 size={17} /> {busy === "withdraw" ? "처리 중..." : "개인정보 제공 동의 철회"}
+            </button>
+            <button className="danger" onClick={() => removeAccount("delete")}>
+              <Trash2 size={17} /> {busy === "delete" ? "삭제 중..." : "계정 삭제"}
+            </button>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
