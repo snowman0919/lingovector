@@ -4,6 +4,8 @@ Use this runbook to start a production-like staging instance without deploying p
 
 Do not use real student data in staging unless a teacher/admin has explicitly approved the test and privacy handling. Prefer short synthetic passages, test voice clips, and a dedicated `@dimigo.hs.kr` staging account.
 
+Before any real student learning data or voice sample is used, complete the final school/operator/legal review of [privacy-consent-draft.md](privacy-consent-draft.md). The in-app consent text is a beta draft, not legal advice.
+
 ## Prerequisites
 
 - Docker Desktop or Docker Engine with Compose v2.

@@ -7,6 +7,7 @@ Use this for staging rehearsal and every beta deploy window. Do not deploy from 
 - [ ] Confirm the target commit SHA.
 - [ ] Confirm no uncommitted changes on the server.
 - [ ] Review [docs/deployment.md](deployment.md).
+- [ ] Review [docs/privacy-consent-draft.md](privacy-consent-draft.md) and confirm final school/operator/legal approval before real student data or voice uploads.
 - [ ] Confirm no secrets are committed.
 - [ ] Confirm provider usage and expected cost/risk for this deploy.
 - [ ] Confirm Korean UI policy is preserved: UI copy is Korean, but English passages, examples, definitions, and student writing remain English.

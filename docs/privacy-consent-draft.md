@@ -14,6 +14,8 @@ Lingovector는 로그인과 학습 기능 제공을 위해 Google account identi
 
 Lingovector는 Google OAuth로 `@dimigo.hs.kr` 학교 계정을 확인합니다. 설정에 따라 optional LLM provider, arXiv, pronunciation provider, storage provider가 사용될 수 있습니다. 실제 provider를 켜기 전 운영자는 어떤 데이터가 외부 서비스로 전송되는지 학생에게 안내해야 합니다.
 
+TTS는 Supertonic ONNX model assets가 준비된 경우 browser-side ONNX 실행을 우선합니다. 이 경로는 가능한 경우 학생 기기에서 음성 생성을 처리하는 방향입니다. Server-side TTS provider는 선택적 fallback이며, 활성화 전 전송 데이터, 비용, 보관 정책을 별도로 검토해야 합니다.
+
 ## 개인정보 처리위탁/처리환경 고지
 
 베타 서비스는 Linux server, Docker Compose, Cloudflare Tunnel, PostgreSQL, local storage 또는 운영자가 승인한 object storage/provider 환경에서 동작할 수 있습니다. 운영자는 서버 접근 권한, 백업, 로그, storage 위치를 최소 권한으로 관리해야 합니다.

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -7,6 +8,7 @@ const consent = readFileSync(resolve(root, "apps/web/src/components/ConsentGate.
 const api = readFileSync(resolve(root, "apps/web/src/lib/api.ts"), "utf8");
 const tts = readFileSync(resolve(root, "apps/web/src/lib/tts.ts"), "utf8");
 const types = readFileSync(resolve(root, "apps/web/src/lib/types.ts"), "utf8");
+const trackedSupertonicModels = execFileSync("git", ["ls-files", "apps/web/public/models/supertonic"], { cwd: root, encoding: "utf8" });
 
 const checks = [
   [study.includes("음성 삭제"), "voice deletion control is rendered"],
@@ -24,6 +26,7 @@ const checks = [
   [api.includes("replace(/\\\\/$/, \"\")") || api.includes("replace(/\\/$/, \"\")"), "API base URL normalizes trailing slash for /api deployments"],
   [study.includes("개인정보 및 계정") && study.includes("개인정보 제공 동의 철회") && study.includes("계정 삭제"), "privacy settings UI exists"],
   [tts.includes("NEXT_PUBLIC_TTS_MODE") && tts.includes("onnxruntime-web") && tts.includes("Supertonic ONNX model schema is not configured"), "browser ONNX TTS adapter and fallback exist"],
+  [!trackedSupertonicModels.split("\n").some((file) => file.endsWith(".onnx")), "large Supertonic ONNX model file is not committed"],
 ];
 
 const failed = checks.filter(([ok]) => !ok);

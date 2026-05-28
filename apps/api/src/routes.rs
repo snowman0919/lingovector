@@ -478,7 +478,13 @@ async fn delete_voice(
         .await?
         .ok_or(AppError::NotFound)?;
     let storage_path: String = row.get("storage_path");
-    state.storage.delete(&storage_path).await?;
+    if let Err(err) = state.storage.delete(&storage_path).await {
+        tracing::warn!(
+            storage_namespace = "voices",
+            error = %err,
+            "voice file delete failed; removing profile record"
+        );
+    }
     sqlx::query("DELETE FROM voice_profiles WHERE id = $1 AND user_id = $2")
         .bind(id)
         .bind(user.id)

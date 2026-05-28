@@ -75,6 +75,8 @@ Optional real provider values:
 
 Production startup fails fast when required env vars are missing or unsafe. `DEV_AUTH=true`, default JWT secrets, short JWT secrets, wildcard CORS, localhost CORS, and non-HTTPS production CORS origins are rejected.
 
+The first-login Korean consent gate is required before beta use, but the bundled consent copy is still an operator-review-required draft. Complete school/operator/legal review before allowing real student learning data or voice uploads.
+
 ## Local Staging Rehearsal
 
 1. Prepare a local production env file:
@@ -271,6 +273,7 @@ Use [cloudflare-tunnel.md](cloudflare-tunnel.md) for the full Cloudflare Tunnel 
 - [ ] `/api/health` returns OK publicly and `/health` returns OK internally.
 - [ ] Manual `@dimigo.hs.kr` login succeeds.
 - [ ] First-login consent gate is reviewed and accepted by the operator test account.
+- [ ] Final privacy consent/operator review is complete before real student data or voice uploads.
 - [ ] `개인정보 및 계정` can delete voice data and delete a test account.
 - [ ] Browser ONNX TTS assets are deployed if `NEXT_PUBLIC_TTS_MODE=browser_onnx`; otherwise server/mock fallback is intentionally selected.
 - [ ] Voice upload/delete beta privacy copy is visible.

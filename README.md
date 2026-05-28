@@ -127,6 +127,7 @@ Production startup fails fast when required beta settings are missing or unsafe:
 - The frontend diagnostics panel is hidden in production unless `NEXT_PUBLIC_DIAGNOSTICS_ENABLED=true`.
 - Required privacy consent is enforced before protected learning routes.
 - Users can delete voice data, withdraw required consent, or delete their account from `개인정보 및 계정`.
+- The Korean consent copy is a beta draft. Complete final school/operator/legal review before real student data or voice uploads.
 
 Mock providers remain visible in developer diagnostics and smoke scripts. The student dashboard avoids exposing provider jargon during normal production use.
 

@@ -64,6 +64,7 @@ Use this checklist before a small school-internal beta. Do not paste secrets int
 
 ## Privacy Review
 
+- [ ] Final school/operator/legal review is complete for [privacy-consent-draft.md](privacy-consent-draft.md); the in-app consent text is not treated as legal advice
 - [ ] Students are told to upload only their own voice or a voice they have explicit permission to use
 - [ ] UI states cloned voices must not be used to impersonate others
 - [ ] Voice upload stores consent text, consent version, file metadata, and the audio sample

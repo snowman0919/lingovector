@@ -130,6 +130,25 @@ assert(Array.isArray(papers) && papers.length >= 6, "arXiv recommendations missi
 const opened = await request("/arxiv/open", { method: "POST", body: JSON.stringify({ id: papers[0].id }) }, token);
 assert(opened.source === "arxiv" && opened.sentences?.length > 0, "arXiv open did not analyze abstract");
 
+const withdrawalLogin = await request("/auth/google", {
+  method: "POST",
+  body: JSON.stringify({ id_token: `dev:withdraw-${Date.now()}@dimigo.hs.kr` }),
+});
+const withdrawalToken = withdrawalLogin.access_token;
+const withdrawalConsentStatus = await request("/me/consents", {}, withdrawalToken);
+await request(
+  "/me/consents/accept",
+  {
+    method: "POST",
+    body: JSON.stringify({ accepted: withdrawalConsentStatus.required.map((item) => item.consent_type) }),
+  },
+  withdrawalToken,
+);
+const withdrawn = await request("/me/withdraw-consent", { method: "POST" }, withdrawalToken);
+assert(withdrawn.deleted === true, "required-consent withdrawal should delete or deactivate the beta account");
+const withdrawnMe = await fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${withdrawalToken}` } });
+assert(withdrawnMe.status === 401, "withdrawn account token should no longer authenticate");
+
 const deletedAccount = await request("/me", { method: "DELETE" }, token);
 assert(deletedAccount.deleted === true, "account deletion endpoint did not confirm deletion");
 const deletedMe = await fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${token}` } });
