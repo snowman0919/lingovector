@@ -15,15 +15,15 @@ export function PassageLanding({ onPassage }: { onPassage: (passage: Passage) =>
 
   async function submit() {
     if (!text.trim()) {
-      setError("Paste a short English passage first.");
+      setError("먼저 짧은 영어 지문을 붙여 넣어 주세요.");
       return;
     }
     setBusy(true);
     setError("");
     try {
       onPassage(await analyzePassage(text, title));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not analyze passage");
+    } catch {
+      setError("지문을 분석하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
       setBusy(false);
     }
@@ -34,36 +34,36 @@ export function PassageLanding({ onPassage }: { onPassage: (passage: Passage) =>
       <div className="input-intro">
         <Sparkles size={20} />
         <div>
-          <h2>Paste an English passage</h2>
-          <p>Lingovector splits the passage into sentences, explains meaning flow in simple English first, then helps with nuance, vocabulary, pronunciation, and writing.</p>
+          <h2>지문 입력</h2>
+          <p>영어 지문을 문장별로 나누고, 먼저 쉬운 영어로 의미 흐름을 잡은 뒤 한국어 설명으로 구조와 뉘앙스를 보완합니다.</p>
         </div>
       </div>
       <div className="field">
-        <label htmlFor="title">Title</label>
+        <label htmlFor="title">제목</label>
         <input id="title" value={title} onChange={(event) => setTitle(event.target.value)} />
       </div>
       <div className="field">
-        <label htmlFor="passage">Passage to study</label>
+        <label htmlFor="passage">분석할 영어 지문</label>
         <textarea
           id="passage"
           value={text}
-          placeholder="Paste 2-6 English sentences from class, a textbook, or an article abstract."
+          placeholder="수업 지문, 교과서 문장, 논문 초록에서 가져온 영어 문장 2-6개를 붙여 넣어 보세요."
           onChange={(event) => setText(event.target.value)}
         />
       </div>
       <div className="toolbar">
         <button className="primary" onClick={submit}>
-          <FileText size={17} /> {busy ? "Analyzing..." : "Analyze passage"}
+          <FileText size={17} /> {busy ? "분석 중..." : "지문 분석"}
         </button>
         <button className="secondary" onClick={() => {
           setTitle("Nuance and fluency");
           setText(SAMPLE);
           setError("");
         }}>
-          <BookOpen size={17} /> Use sample passage
+          <BookOpen size={17} /> 샘플 지문 사용
         </button>
       </div>
-      <p className="next-action">After analysis, choose a sentence on the left, read the center explanation, then click any word for deeper meaning.</p>
+      <p className="next-action">분석 후에는 왼쪽에서 문장을 고르고, 가운데 설명을 읽은 뒤, 더 알고 싶은 단어를 클릭하세요.</p>
       {error ? <div className="error">{error}</div> : null}
     </section>
   );

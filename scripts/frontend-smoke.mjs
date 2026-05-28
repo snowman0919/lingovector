@@ -7,15 +7,16 @@ const api = readFileSync(resolve(root, "apps/web/src/lib/api.ts"), "utf8");
 const types = readFileSync(resolve(root, "apps/web/src/lib/types.ts"), "utf8");
 
 const checks = [
-  [study.includes("Delete voice"), "voice deletion control is rendered"],
-  [study.includes("Before") && study.includes("Revised Version"), "writing before/after display is rendered"],
+  [study.includes("음성 삭제"), "voice deletion control is rendered"],
+  [study.includes("수정 전") && study.includes("수정 후"), "writing before/after display is rendered"],
   [api.includes("DELETE") && api.includes("/voices/"), "voice delete API client exists"],
   [types.includes("consent_version"), "voice consent version type exists"],
-  [study.includes("Cloned voices must not be used to impersonate anyone"), "voice consent warning exists"],
+  [study.includes("복제 음성은 다른 사람을 사칭하는 데 사용할 수 없습니다"), "voice consent warning exists"],
   [study.includes("ProviderDiagnosticsPanel") && api.includes("/diagnostics/providers"), "dev provider diagnostics UI exists"],
   [study.includes("LearningQualityReview"), "dev learning-quality review UI exists"],
-  [study.includes("Demo audio (mock)"), "mock provider label is limited to developer UI"],
-  [study.includes("Study flow"), "dashboard study flow guide exists"],
+  [study.includes("개발용 샘플 음성 (mock)"), "mock provider label is limited to developer UI"],
+  [study.includes("학습 흐름"), "dashboard study flow guide exists"],
+  [study.includes("지문 입력") && study.includes("영작 튜터") && study.includes("논문 추천"), "main UI labels are localized"],
 ];
 
 const failed = checks.filter(([ok]) => !ok);

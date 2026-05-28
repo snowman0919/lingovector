@@ -45,7 +45,7 @@ export default function Home() {
         {user ? (
           <div className="user-chip">
             <UserRound size={16} /> {user.email}
-            <button className="icon-button" title="Sign out" onClick={logout}>
+            <button className="icon-button" title="로그아웃" onClick={logout}>
               <LogOut size={16} />
             </button>
           </div>

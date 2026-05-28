@@ -2,6 +2,8 @@
 
 Lingovector is an AI English tutor for Korean high school students. The v0.3 MVP focuses on English as a tool for thinking and expression: sentence logic, vocabulary nuance, pronunciation, and writing feedback.
 
+The main student UI is Korean for Dimigo beta users. English passages, examples, definitions, generated Simple English explanations, and student-written English remain in English so the learning flow stays English-first, with Korean used as support rather than translation memorization.
+
 ## Stack
 
 - Frontend: Next.js + TypeScript

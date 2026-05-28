@@ -34,6 +34,27 @@ type Tab = "audio" | "pronunciation" | "writing" | "arxiv" | "diagnostics" | "re
 
 const DIAGNOSTICS_VISIBLE = process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_DIAGNOSTICS_ENABLED === "true";
 const DEV_REVIEW_VISIBLE = process.env.NODE_ENV !== "production";
+const TAB_LABELS: Record<Tab, string> = {
+  audio: "발음 듣기",
+  pronunciation: "발음 연습",
+  writing: "영작 튜터",
+  arxiv: "논문 추천",
+  diagnostics: "개발자 진단",
+  review: "품질 리뷰",
+};
+const SCORE_LABELS: Record<string, string> = {
+  Grammar: "문법",
+  Vocabulary: "어휘",
+  Nuance: "뉘앙스",
+  Logic: "논리",
+  Structure: "구조",
+  Clarity: "명확성",
+  Naturalness: "자연스러움",
+};
+
+function scoreLabel(name: string) {
+  return SCORE_LABELS[name] ?? name;
+}
 
 const REVIEW_SAMPLES = [
   {
@@ -89,83 +110,83 @@ export function StudyDashboard({
     <>
       <section className="dashboard-guide">
         <div>
-          <b>Study flow</b>
-          <span>Choose a sentence on the left, read the meaning flow in the center, click a word on the right, then practice below.</span>
+          <b>학습 흐름</b>
+          <span>왼쪽에서 원문 문장을 고르고, 가운데에서 의미 흐름을 먼저 읽은 뒤, 오른쪽에서 단어를 깊게 확인하세요. 아래에서는 듣기, 발음, 영작을 연습합니다.</span>
         </div>
         <button className="secondary" onClick={onNewPassage}>
-          <FilePlus2 size={16} /> New passage
+          <FilePlus2 size={16} /> 새 지문 입력
         </button>
       </section>
       <section className="study-grid">
-      <section className="panel study-panel">
-        <div className="panel-head">
-          <span>Left · Passage</span>
-          <button className="icon-button" title="Analyze a new passage" onClick={onNewPassage}>
-            <FilePlus2 size={16} />
-          </button>
-        </div>
-        <div className="panel-body sentence-list">
-          {passage.sentences.map((sentence) => (
-            <div
-              className={`sentence-item ${sentence.id === selected?.id ? "active" : ""}`}
-              key={sentence.id}
-              onClick={() => setSelectedSentenceId(sentence.id)}
-              role="button"
-              tabIndex={0}
-            >
-              {sentence.text.split(/\s+/).map((token, index) => (
-                <span key={`${token}-${index}`}>
-                  <button className="word-button" onClick={(event) => {
-                    event.stopPropagation();
-                    chooseWord(token);
-                  }}>
-                    {token}
-                  </button>{" "}
-                </span>
-              ))}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel study-panel">
-        <div className="panel-head">Center · Sentence Analysis</div>
-        <div className="panel-body">
-          {selected ? <SentenceAnalysis sentence={selected} /> : null}
-        </div>
-      </section>
-
-      <section className="panel study-panel">
-        <div className="panel-head">Right · Word Details</div>
-        <div className="panel-body">
-          {word ? (
-            <WordPanel word={word} busy={busy === "word"} />
-          ) : (
-            <p className="right-panel-empty">Select any word from the original passage to inspect definition, concept, context, Korean support, and morphology.</p>
-          )}
-        </div>
-      </section>
-
-      <section className="panel study-panel bottom-panel">
-        <div className="panel-head">
-          Practice
-          <div className="bottom-tabs">
-            {tabs.map((item) => (
-              <button key={item} className={`tab ${tab === item ? "active" : ""}`} onClick={() => setTab(item)}>
-                {item}
-              </button>
+        <section className="panel study-panel">
+          <div className="panel-head">
+            <span>왼쪽 · 원문</span>
+            <button className="icon-button" title="새 지문 분석" onClick={onNewPassage}>
+              <FilePlus2 size={16} />
+            </button>
+          </div>
+          <div className="panel-body sentence-list">
+            {passage.sentences.map((sentence) => (
+              <div
+                className={`sentence-item ${sentence.id === selected?.id ? "active" : ""}`}
+                key={sentence.id}
+                onClick={() => setSelectedSentenceId(sentence.id)}
+                role="button"
+                tabIndex={0}
+              >
+                {sentence.text.split(/\s+/).map((token, index) => (
+                  <span key={`${token}-${index}`}>
+                    <button className="word-button" onClick={(event) => {
+                      event.stopPropagation();
+                      chooseWord(token);
+                    }}>
+                      {token}
+                    </button>{" "}
+                  </span>
+                ))}
+              </div>
             ))}
           </div>
-        </div>
-        <div className="panel-body">
-          {tab === "audio" && selected ? <AudioPractice sentence={selected} /> : null}
-          {tab === "pronunciation" && selected ? <PronunciationPractice sentence={selected} /> : null}
-          {tab === "writing" ? <WritingTutor passage={passage} /> : null}
-          {tab === "arxiv" ? <ArxivLearning onPassage={onPassage} /> : null}
-          {tab === "diagnostics" && DIAGNOSTICS_VISIBLE ? <ProviderDiagnosticsPanel /> : null}
-          {tab === "review" && DEV_REVIEW_VISIBLE ? <LearningQualityReview /> : null}
-        </div>
-      </section>
+        </section>
+
+        <section className="panel study-panel">
+          <div className="panel-head">가운데 · 문장 분석</div>
+          <div className="panel-body">
+            {selected ? <SentenceAnalysis sentence={selected} /> : null}
+          </div>
+        </section>
+
+        <section className="panel study-panel">
+          <div className="panel-head">오른쪽 · 단어 상세</div>
+          <div className="panel-body">
+            {word ? (
+              <WordPanel word={word} busy={busy === "word"} />
+            ) : (
+              <p className="right-panel-empty">원문에서 단어를 클릭하면 영어 정의, 핵심 개념, 문맥 속 의미, 한국어 보조 설명, 형태 분석을 볼 수 있습니다. 선택한 단어는 학습 기록에 저장됩니다.</p>
+            )}
+          </div>
+        </section>
+
+        <section className="panel study-panel bottom-panel">
+          <div className="panel-head">
+            연습
+            <div className="bottom-tabs">
+              {tabs.map((item) => (
+                <button key={item} className={`tab ${tab === item ? "active" : ""}`} onClick={() => setTab(item)}>
+                  {TAB_LABELS[item]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="panel-body">
+            {tab === "audio" && selected ? <AudioPractice sentence={selected} /> : null}
+            {tab === "pronunciation" && selected ? <PronunciationPractice sentence={selected} /> : null}
+            {tab === "writing" ? <WritingTutor passage={passage} /> : null}
+            {tab === "arxiv" ? <ArxivLearning onPassage={onPassage} /> : null}
+            {tab === "diagnostics" && DIAGNOSTICS_VISIBLE ? <ProviderDiagnosticsPanel /> : null}
+            {tab === "review" && DEV_REVIEW_VISIBLE ? <LearningQualityReview /> : null}
+          </div>
+        </section>
       </section>
     </>
   );
@@ -175,19 +196,19 @@ function SentenceAnalysis({ sentence }: { sentence: Sentence }) {
   return (
     <>
       <div className="analysis-card">
-        <h3>Simple English</h3>
+        <h3>Simple English 설명</h3>
         <p>{sentence.simple_english}</p>
       </div>
       <div className="analysis-card">
-        <h3>Detailed Korean</h3>
+        <h3>자세한 한국어 설명</h3>
         <p>{sentence.korean_detail}</p>
       </div>
       <div className="analysis-card">
-        <h3>Grammar Structure</h3>
+        <h3>문법 구조</h3>
         <pre>{JSON.stringify(sentence.grammar, null, 2)}</pre>
       </div>
       <div className="analysis-card">
-        <h3>Meaning Chunks</h3>
+        <h3>의미 단위</h3>
         <div className="chunks">
           {sentence.chunks.map((chunk, index) => (
             <div className="chunk" key={`${chunk.label}-${index}`}>
@@ -199,7 +220,7 @@ function SentenceAnalysis({ sentence }: { sentence: Sentence }) {
         </div>
       </div>
       <div className="analysis-card">
-        <h3>POS Visualization</h3>
+        <h3>품사 분석</h3>
         <div>
           {sentence.pos.map((token, index) => (
             <span className="token" key={`${token.token}-${index}`}>
@@ -209,19 +230,19 @@ function SentenceAnalysis({ sentence }: { sentence: Sentence }) {
         </div>
       </div>
       <div className="analysis-card">
-        <h3>Sentence-Structure Visualization</h3>
+        <h3>문장 구조</h3>
         <div className="structure-list">
           {sentence.structure.map((item, index) => (
             <div className="structure-item" key={`${item.label}-${index}`}>
               <b>{item.label}</b>
-              <p>{item.text || "No extra words in this section."}</p>
+              <p>{item.text || "이 구간에 추가 단어가 없습니다."}</p>
               <small>{item.role}</small>
             </div>
           ))}
         </div>
       </div>
       <div className="analysis-card">
-        <h3>Interpretation Flow and Logic</h3>
+        <h3>해석 흐름과 논리 관계</h3>
         <p>{sentence.logic_relation}</p>
       </div>
     </>
@@ -236,19 +257,19 @@ function WordPanel({ word, busy }: { word: WordInspect; busy: boolean }) {
         <p>{word.english_definition}</p>
       </div>
       <div className="analysis-card">
-        <h3>Core Meaning Concept</h3>
+        <h3>핵심 의미 개념</h3>
         <p>{word.core_meaning}</p>
       </div>
       <div className="analysis-card">
-        <h3>Contextual Meaning</h3>
+        <h3>문맥 속 의미</h3>
         <p>{word.contextual_meaning}</p>
       </div>
       <div className="analysis-card">
-        <h3>Korean Support</h3>
+        <h3>한국어 보조 설명</h3>
         <p>{word.korean_support}</p>
       </div>
       <div className="analysis-card">
-        <h3>Morphology</h3>
+        <h3>형태 분석</h3>
         <pre>{JSON.stringify(word.morphology, null, 2)}</pre>
       </div>
     </div>
@@ -272,8 +293,8 @@ function AudioPractice({ sentence }: { sentence: Sentence }) {
       result.spoken_words.forEach((word) => {
         window.setTimeout(() => setActiveWord(word.word), word.start_ms);
       });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not play this sentence.");
+    } catch {
+      setError("문장을 재생하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
       setBusy(false);
     }
@@ -282,18 +303,18 @@ function AudioPractice({ sentence }: { sentence: Sentence }) {
   return (
     <div className="bottom-content">
       <div>
-        <p className="mini-title">Sentence Playback</p>
+        <p className="mini-title">문장 재생</p>
         <div className="toolbar">
           <button className="primary" onClick={play}>
-            <Volume2 size={17} /> {busy ? "Preparing..." : "Play sentence"}
+            <Volume2 size={17} /> {busy ? "준비 중..." : "문장 재생"}
           </button>
-          {tts?.provider === "mock" && DIAGNOSTICS_VISIBLE ? <span>Demo audio (mock)</span> : null}
+          {tts?.provider === "mock" && DIAGNOSTICS_VISIBLE ? <span>개발용 샘플 음성 (mock)</span> : null}
         </div>
         {error ? <div className="error">{error}</div> : null}
         {tts ? <audio ref={audioRef} controls src={mediaUrl(tts.audio_url)} /> : null}
       </div>
       <div>
-        <p className="mini-title">Current Spoken Word</p>
+        <p className="mini-title">현재 들리는 단어</p>
         <p>
           {sentence.text.split(/\s+/).map((token, index) => (
             <span className={token.replace(/[^\w-]/g, "") === activeWord ? "word-highlight" : ""} key={`${token}-${index}`}>
@@ -327,13 +348,13 @@ function PronunciationPractice({ sentence }: { sentence: Sentence }) {
       recorder.onstop = () => {
         setAudio(new Blob(chunks.current, { type: "audio/webm" }));
         stream.getTracks().forEach((track) => track.stop());
-        setStatus("Recording ready. Press Score to get feedback.");
+        setStatus("녹음이 준비되었습니다. 점수 확인을 눌러 피드백을 받아 보세요.");
       };
       recorder.start();
       setRecording(true);
-      setStatus("Recording...");
+      setStatus("녹음 중...");
     } catch {
-      setError("Microphone access was blocked. Allow microphone permission, or use the mock scorer without recording.");
+      setError("마이크 접근이 차단되었습니다. 브라우저에서 마이크 권한을 허용하거나, 녹음 없이 mock 채점기를 사용해 보세요.");
     }
   }
 
@@ -344,13 +365,13 @@ function PronunciationPractice({ sentence }: { sentence: Sentence }) {
 
   async function submit() {
     setError("");
-    setStatus("Scoring pronunciation...");
+    setStatus("발음을 채점하는 중...");
     try {
       const result = await scorePronunciation(audio, sentence.text, sentence.id);
       setScore(result.score);
-      setStatus("Pronunciation feedback saved.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not score pronunciation.");
+      setStatus("발음 피드백이 저장되었습니다.");
+    } catch {
+      setError("발음을 채점하지 못했습니다. 잠시 후 다시 시도해 주세요.");
       setStatus("");
     }
   }
@@ -358,27 +379,27 @@ function PronunciationPractice({ sentence }: { sentence: Sentence }) {
   return (
     <div className="bottom-content">
       <div>
-        <p className="mini-title">Record and Score</p>
+        <p className="mini-title">녹음과 채점</p>
         <div className="toolbar">
           {!recording ? (
             <button className="primary" onClick={start}>
-              <Mic size={17} /> Record
+              <Mic size={17} /> 녹음 시작
             </button>
           ) : (
             <button className="danger" onClick={stop}>
-              <Pause size={17} /> Stop
+              <Pause size={17} /> 중지
             </button>
           )}
           <button className="secondary" onClick={submit}>
-            <RefreshCw size={17} /> Score
+            <RefreshCw size={17} /> 점수 확인
           </button>
         </div>
         {status ? <p className="helper-text">{status}</p> : null}
         {error ? <div className="error">{error}</div> : null}
       </div>
       <div>
-        <p className="mini-title">Pronunciation Feedback</p>
-        <pre>{score ? JSON.stringify(score, null, 2) : "No score yet."}</pre>
+        <p className="mini-title">발음 피드백</p>
+        <pre>{score ? JSON.stringify(score, null, 2) : "아직 점수가 없습니다."}</pre>
       </div>
     </div>
   );
@@ -397,8 +418,8 @@ function WritingTutor({ passage }: { passage: Passage }) {
     try {
       const generated = await writingPrompt(passage.id);
       setPrompt(generated.prompt);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not generate a writing prompt.");
+    } catch {
+      setError("영작 프롬프트를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
       setBusy("");
     }
@@ -406,15 +427,15 @@ function WritingTutor({ passage }: { passage: Passage }) {
 
   async function submit() {
     if (!prompt.trim() || !response.trim()) {
-      setError("Generate a prompt and write your English response first.");
+      setError("먼저 프롬프트를 만들고 영어 답안을 작성해 주세요.");
       return;
     }
     setBusy("submit");
     setError("");
     try {
       setResult(await submitWriting(prompt, response, passage.id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not score this writing.");
+    } catch {
+      setError("영작 피드백을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
       setBusy("");
     }
@@ -423,52 +444,52 @@ function WritingTutor({ passage }: { passage: Passage }) {
   return (
     <div className="bottom-content">
       <div>
-        <p className="mini-title">Writing Prompt</p>
+        <p className="mini-title">영작 프롬프트</p>
         <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} />
         <div className="toolbar">
           <button className="secondary" onClick={generate}>
-            <Wand2 size={17} /> {busy === "prompt" ? "Generating..." : "Generate"}
+            <Wand2 size={17} /> {busy === "prompt" ? "만드는 중..." : "프롬프트 만들기"}
           </button>
           <button className="primary" onClick={submit}>
-            <Send size={17} /> {busy === "submit" ? "Scoring..." : "Submit"}
+            <Send size={17} /> {busy === "submit" ? "채점 중..." : "영작 제출"}
           </button>
         </div>
         {error ? <div className="error">{error}</div> : null}
         <div className="field">
-          <label htmlFor="writing">Response</label>
+          <label htmlFor="writing">내 영어 답안</label>
           <textarea id="writing" value={response} onChange={(event) => setResponse(event.target.value)} />
         </div>
       </div>
       <div>
-        <p className="mini-title">Feedback</p>
+        <p className="mini-title">피드백 보기</p>
         {result ? (
           <>
             <div className="score-grid">
               {Object.entries(result.scores).map(([name, value]) => (
                 <div className="score-card" key={name}>
-                  <b>{name}</b> {value}/100
+                  <b>{scoreLabel(name)}</b> {value}/100
                 </div>
               ))}
             </div>
             <div className="analysis-card">
-              <h3>Korean-like Translated English</h3>
+              <h3>한국어식 번역투</h3>
               <pre>{JSON.stringify(result.korean_like_translation, null, 2)}</pre>
             </div>
             <div className="analysis-card">
-              <h3>Before</h3>
+              <h3>수정 전</h3>
               <p>{result.original}</p>
             </div>
             <div className="analysis-card">
-              <h3>Revised Version</h3>
+              <h3>수정 후</h3>
               <p>{result.revised}</p>
             </div>
             <div className="analysis-card">
-              <h3>Explanation</h3>
+              <h3>설명</h3>
               <p>{result.explanation}</p>
             </div>
           </>
         ) : (
-          <p className="right-panel-empty">Generate a prompt, write in English, then submit for scores and revision.</p>
+          <p className="right-panel-empty">프롬프트를 만든 뒤 영어로 답안을 쓰고 제출하면 7개 기준 점수, 번역투 점검, 수정 예시와 설명을 볼 수 있습니다.</p>
         )}
       </div>
     </div>
@@ -485,8 +506,8 @@ function ArxivLearning({ onPassage }: { onPassage: (passage: Passage) => void })
     setError("");
     try {
       setPapers(await arxivRecommendations());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load arXiv recommendations.");
+    } catch {
+      setError("논문 추천을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
       setLoading(false);
     }
@@ -496,8 +517,8 @@ function ArxivLearning({ onPassage }: { onPassage: (passage: Passage) => void })
     setError("");
     try {
       onPassage(await openArxiv(id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not open this abstract.");
+    } catch {
+      setError("이 초록을 분석 화면으로 열지 못했습니다.");
     }
   }
 
@@ -505,11 +526,11 @@ function ArxivLearning({ onPassage }: { onPassage: (passage: Passage) => void })
     <div>
       <div className="toolbar">
         <button className="primary" onClick={load}>
-          <RefreshCw size={17} /> {loading ? "Loading..." : "Load recommendations"}
+          <RefreshCw size={17} /> {loading ? "불러오는 중..." : "논문 추천 불러오기"}
         </button>
       </div>
       {error ? <div className="error">{error}</div> : null}
-      {!loading && papers.length === 0 ? <p className="right-panel-empty">Load title-and-abstract recommendations for Security, AI, Robotics, Physics, Chemistry, and Biology.</p> : null}
+      {!loading && papers.length === 0 ? <p className="right-panel-empty">Security, AI, Robotics, Physics, Chemistry, Biology 분야의 제목과 초록만 사용한 추천을 불러옵니다. 마음에 드는 초록은 같은 문장 분석 흐름으로 열 수 있습니다.</p> : null}
       <div className={`arxiv-list ${loading ? "loading" : ""}`}>
         {papers.map((paper) => (
           <article className="arxiv-item" key={paper.id}>
@@ -517,10 +538,10 @@ function ArxivLearning({ onPassage }: { onPassage: (passage: Passage) => void })
             <h3>{paper.title}</h3>
             <p>{paper.abstract_text}</p>
             <p>{paper.reason}</p>
-            <p><b>Key vocabulary:</b> {paper.key_vocabulary.join(", ")}</p>
-            <p><b>Writing:</b> {paper.writing_prompt}</p>
+            <p><b>핵심 어휘:</b> {paper.key_vocabulary.join(", ")}</p>
+            <p><b>영작 과제:</b> {paper.writing_prompt}</p>
             <button className="secondary" onClick={() => open(paper.id)}>
-              <Play size={17} /> Open abstract
+              <Play size={17} /> 초록 분석하기
             </button>
           </article>
         ))}
@@ -531,7 +552,7 @@ function ArxivLearning({ onPassage }: { onPassage: (passage: Passage) => void })
 
 export function VoiceConsentUploader() {
   const [file, setFile] = useState<File | null>(null);
-  const [consent, setConsent] = useState("I agree to upload only my own voice, or a voice I have explicit permission to use. I understand Lingovector stores this sample and consent metadata for my study voice profile, and I will not use cloned voices to impersonate anyone.");
+  const [consent, setConsent] = useState("저는 제 목소리이거나 사용할 명시적 허락을 받은 목소리만 업로드하는 데 동의합니다. Lingovector가 학습용 음성 프로필을 위해 이 샘플과 동의 메타데이터를 저장한다는 점을 이해하며, 복제 음성을 다른 사람을 사칭하는 데 사용하지 않겠습니다.");
   const [profile, setProfile] = useState<VoiceProfile | null>(null);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -539,18 +560,18 @@ export function VoiceConsentUploader() {
 
   async function submit() {
     if (!file) {
-      setError("Choose a voice sample file first.");
+      setError("먼저 음성 샘플 파일을 선택해 주세요.");
       return;
     }
     setBusy("upload");
     setError("");
-    setStatus("Uploading voice sample...");
+    setStatus("음성 샘플을 업로드하는 중...");
     try {
       const response = await uploadVoice(file, consent, "Student voice");
       setProfile(response);
-      setStatus("Voice profile saved. You can delete it here at any time.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not upload this voice sample.");
+      setStatus("음성 프로필이 저장되었습니다. 언제든지 여기에서 삭제할 수 있습니다.");
+    } catch {
+      setError("음성 샘플을 업로드하지 못했습니다. 동의 문구와 파일을 확인한 뒤 다시 시도해 주세요.");
       setStatus("");
     } finally {
       setBusy("");
@@ -563,10 +584,10 @@ export function VoiceConsentUploader() {
     setError("");
     try {
       await deleteVoice(profile.id);
-      setStatus("Voice profile deleted. The saved profile record was removed and Lingovector attempted to remove the stored audio file.");
+      setStatus("음성 프로필이 삭제되었습니다. 저장된 프로필 기록을 제거했고, 저장된 오디오 파일 삭제도 시도했습니다.");
       setProfile(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not delete this voice profile.");
+    } catch {
+      setError("음성 프로필을 삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
       setBusy("");
     }
@@ -574,25 +595,25 @@ export function VoiceConsentUploader() {
 
   return (
     <div>
-      <p className="mini-title">Voice Cloning</p>
+      <p className="mini-title">음성 업로드</p>
       <div className="consent-box">
         <Upload size={18} />
-        <span>Upload only your own voice, or a voice you have explicit permission to use. Lingovector stores the audio sample, consent text, consent version, and file metadata for this profile. Delete removes the profile record and attempts to remove the stored audio file. Cloned voices must not be used to impersonate anyone.</span>
+        <span>본인 목소리 또는 명시적 허락을 받은 목소리만 업로드하세요. Lingovector는 오디오 샘플, 동의 문구, 동의 버전, 파일 메타데이터를 저장합니다. 삭제하면 프로필 기록을 제거하고 저장된 오디오 파일 삭제를 시도합니다. 복제 음성은 다른 사람을 사칭하는 데 사용할 수 없습니다.</span>
       </div>
       <div className="field">
-        <label htmlFor="voice-file">Voice sample</label>
+        <label htmlFor="voice-file">음성 샘플</label>
         <input id="voice-file" type="file" accept="audio/*" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
       </div>
       <div className="field">
-        <label htmlFor="consent">Consent text</label>
+        <label htmlFor="consent">동의 문구</label>
         <textarea id="consent" value={consent} onChange={(event) => setConsent(event.target.value)} />
       </div>
       <button className="secondary" onClick={submit}>
-        <Upload size={17} /> {busy === "upload" ? "Uploading..." : "Upload voice"}
+        <Upload size={17} /> {busy === "upload" ? "업로드 중..." : "음성 업로드"}
       </button>
       {profile ? (
         <button className="danger" onClick={remove}>
-          <Trash2 size={17} /> {busy === "delete" ? "Deleting..." : "Delete voice"}
+          <Trash2 size={17} /> {busy === "delete" ? "삭제 중..." : "음성 삭제"}
         </button>
       ) : null}
       {status ? <p className="helper-text">{status}</p> : null}
@@ -615,7 +636,7 @@ function LearningQualityReview() {
   const sample = REVIEW_SAMPLES.find((item) => item.id === sampleId) ?? REVIEW_SAMPLES[0];
 
   async function run() {
-    setStatus("Running sample through the same study flow...");
+    setStatus("샘플을 같은 학습 흐름으로 실행하는 중...");
     setError("");
     setResult(null);
     try {
@@ -624,9 +645,9 @@ function LearningQualityReview() {
       const generatedPrompt = await writingPrompt(passage.id);
       const writing = await submitWriting(generatedPrompt.prompt, sample.response, passage.id);
       setResult({ passage, word, writing, prompt: generatedPrompt.prompt });
-      setStatus("Review sample ready.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not run this review sample.");
+      setStatus("리뷰 샘플 준비 완료.");
+    } catch {
+      setError("리뷰 샘플을 실행하지 못했습니다. API 상태를 확인해 주세요.");
       setStatus("");
     }
   }
@@ -640,7 +661,7 @@ function LearningQualityReview() {
           ))}
         </select>
         <button className="secondary" onClick={run}>
-          <RefreshCw size={17} /> Run review sample
+          <RefreshCw size={17} /> 리뷰 샘플 실행
         </button>
       </div>
       {status ? <p className="helper-text">{status}</p> : null}
@@ -648,30 +669,30 @@ function LearningQualityReview() {
       {result ? (
         <div className="review-grid">
           <section className="analysis-card">
-            <h3>Sentence Analysis</h3>
+            <h3>문장 분석</h3>
             <pre>{JSON.stringify(result.passage.sentences, null, 2)}</pre>
           </section>
           <section className="analysis-card">
-            <h3>Word Analysis</h3>
+            <h3>단어 분석</h3>
             <pre>{JSON.stringify(result.word, null, 2)}</pre>
           </section>
           <section className="analysis-card">
-            <h3>Writing Feedback</h3>
+            <h3>영작 피드백</h3>
             <div className="score-grid">
               {Object.entries(result.writing.scores).map(([name, value]) => (
                 <div className="score-card" key={name}>
-                  <b>{name}</b> {value}/100
+                  <b>{scoreLabel(name)}</b> {value}/100
                 </div>
               ))}
             </div>
-            <p><b>Prompt:</b> {result.prompt}</p>
-            <p><b>Before:</b> {result.writing.original}</p>
-            <p><b>After:</b> {result.writing.revised}</p>
+            <p><b>프롬프트:</b> {result.prompt}</p>
+            <p><b>수정 전:</b> {result.writing.original}</p>
+            <p><b>수정 후:</b> {result.writing.revised}</p>
             <pre>{JSON.stringify(result.writing.korean_like_translation, null, 2)}</pre>
           </section>
         </div>
       ) : (
-        <p className="right-panel-empty">Local review mode runs committed sample passages through sentence analysis, word analysis, and writing feedback for manual quality checks.</p>
+        <p className="right-panel-empty">로컬 리뷰 모드는 커밋된 샘플 지문을 문장 분석, 단어 분석, 영작 피드백 흐름에 넣어 학습 품질을 직접 확인하게 해 줍니다.</p>
       )}
     </div>
   );
@@ -682,12 +703,12 @@ function ProviderDiagnosticsPanel() {
   const [status, setStatus] = useState("");
 
   async function load() {
-    setStatus("Loading diagnostics...");
+    setStatus("진단 정보를 불러오는 중...");
     try {
       setDiagnostics(await providerDiagnostics());
       setStatus("");
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Diagnostics unavailable.");
+    } catch {
+      setStatus("진단 정보를 불러오지 못했습니다. API 설정을 확인해 주세요.");
     }
   }
 
@@ -695,9 +716,9 @@ function ProviderDiagnosticsPanel() {
     <div>
       <div className="toolbar">
         <button className="secondary" onClick={load}>
-          <Activity size={17} /> Check providers
+          <Activity size={17} /> 제공자 상태 확인
         </button>
-        {diagnostics ? <span>Environment: {diagnostics.environment}</span> : null}
+        {diagnostics ? <span>환경: {diagnostics.environment}</span> : null}
       </div>
       {status ? <p className="right-panel-empty">{status}</p> : null}
       {diagnostics ? (
@@ -708,7 +729,7 @@ function ProviderDiagnosticsPanel() {
                 <p className="mini-title">{provider.name}</p>
                 <span className={`provider-mode ${provider.mode}`}>{provider.mode}</span>
               </div>
-              <p>{provider.detail}</p>
+              <p><b>상태 설명:</b> {provider.detail}</p>
               <pre>{JSON.stringify(provider.metadata, null, 2)}</pre>
             </article>
           ))}

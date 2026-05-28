@@ -3,12 +3,12 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Lingovector v0.3",
-  description: "AI English tutor for Korean high school students",
+  description: "한국 고등학생을 위한 영어 사고력 튜터",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="ko">
       <body>{children}</body>
     </html>
   );

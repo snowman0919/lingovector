@@ -65,24 +65,24 @@ export function LoginPanel({ onLogin }: { onLogin: (user: User) => void }) {
       <div className="login-copy">
         <h1>Lingovector</h1>
         <p>
-          Study English as a system for thinking: sentence logic, nuance, vocabulary depth,
-          pronunciation, and writing confidence for Dimigo students.
+          영어를 한국어로 외우는 대신, 문장 논리와 뉘앙스, 깊은 어휘 감각, 발음,
+          영작 자신감을 함께 기르는 Dimigo 학생용 영어 학습 도구입니다.
         </p>
       </div>
       <div className={`panel login-panel ${busy ? "loading" : ""}`}>
-        <h2>Sign in</h2>
+        <h2>로그인</h2>
         <div id="google-login-button" />
         {!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
-          <p className="helper-text">Google sign-in is not configured in this build. Ask your teacher or administrator to check the beta setup.</p>
+          <p className="helper-text">이 빌드에는 Google 로그인이 아직 설정되지 않았습니다. 선생님이나 관리자에게 베타 설정을 확인해 달라고 알려 주세요.</p>
         ) : null}
         {DEV_LOGIN_VISIBLE ? (
           <>
             <div className="field">
-              <label htmlFor="id-token">Local development token</label>
+              <label htmlFor="id-token">로컬 개발용 토큰</label>
               <input id="id-token" value={tokenInput} onChange={(event) => setTokenInput(event.target.value)} />
             </div>
             <button className="primary" onClick={() => completeLogin(tokenInput)}>
-              <LogIn size={17} /> Continue in dev mode
+              <LogIn size={17} /> 개발 모드로 계속하기
             </button>
           </>
         ) : null}
@@ -93,18 +93,18 @@ export function LoginPanel({ onLogin }: { onLogin: (user: User) => void }) {
 }
 
 function readableLoginError(error: unknown) {
-  const message = error instanceof Error ? error.message : "Login failed";
+  const message = error instanceof Error ? error.message : "로그인에 실패했습니다.";
   if (message.includes("email must be verified")) {
-    return "Your Google account email must be verified before you can use Lingovector.";
+    return "Lingovector를 사용하려면 Google 계정 이메일 인증이 완료되어 있어야 합니다.";
   }
   if (message.includes("dimigo.hs.kr") || message.includes("hosted domain")) {
-    return "Use your verified @dimigo.hs.kr Google account to sign in.";
+    return "인증된 @dimigo.hs.kr Google 계정으로 로그인해 주세요.";
   }
   if (message.includes("development login token is disabled")) {
-    return "Local development login is disabled on this server. Use Google sign-in.";
+    return "이 서버에서는 로컬 개발 로그인이 꺼져 있습니다. Google 로그인으로 접속해 주세요.";
   }
   if (message.includes("unauthorized")) {
-    return "Sign-in failed. Please try again with your school Google account.";
+    return "로그인에 실패했습니다. 학교 Google 계정으로 다시 시도해 주세요.";
   }
-  return message;
+  return "로그인에 실패했습니다. 잠시 후 다시 시도하거나 학교 Google 계정을 확인해 주세요.";
 }
