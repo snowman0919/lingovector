@@ -45,6 +45,14 @@ impl LocalStorage {
     pub fn full_path(&self, relative: &str) -> PathBuf {
         self.root.join(relative)
     }
+
+    pub async fn delete(&self, relative: &str) -> AppResult<()> {
+        let path = self.full_path(relative);
+        if fs::try_exists(&path).await? {
+            fs::remove_file(path).await?;
+        }
+        Ok(())
+    }
 }
 
 fn mock_wav() -> Vec<u8> {

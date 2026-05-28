@@ -71,7 +71,7 @@ export function LoginPanel({ onLogin }: { onLogin: (user: User) => void }) {
         <h2>Sign in</h2>
         <div id="google-login-button" />
         <div className="field">
-          <label htmlFor="id-token">Google ID token or local dev token</label>
+          <label htmlFor="id-token">Google ID token or DEV_AUTH local token</label>
           <input id="id-token" value={tokenInput} onChange={(event) => setTokenInput(event.target.value)} />
         </div>
         <button className="primary" onClick={() => completeLogin(tokenInput)}>

@@ -51,8 +51,18 @@ export type WritingResult = {
   id: string;
   scores: Record<string, number>;
   korean_like_translation: Array<{ phrase: string; suggestion: string }>;
+  original: string;
   revised: string;
   explanation: string;
+};
+
+export type VoiceProfile = {
+  id: string;
+  provider: string;
+  provider_voice_id: string;
+  consent_text: string;
+  consent_version: string;
+  metadata: Record<string, unknown>;
 };
 
 export type ArxivRecommendation = {

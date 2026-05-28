@@ -1,4 +1,4 @@
-import type { ArxivRecommendation, Passage, TtsResult, User, WordInspect, WritingResult } from "./types";
+import type { ArxivRecommendation, Passage, TtsResult, User, VoiceProfile, WordInspect, WritingResult } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8080";
 const TOKEN_KEY = "lingovector_token";
@@ -56,10 +56,14 @@ export async function uploadVoice(file: Blob, consentText: string, name: string)
   form.append("file", file, "voice-sample.webm");
   form.append("consent_text", consentText);
   form.append("name", name);
-  return request<{ id: string; provider: string; provider_voice_id: string; consent_text: string }>("/voices/upload", {
+  return request<VoiceProfile>("/voices/upload", {
     method: "POST",
     body: form,
   });
+}
+
+export async function deleteVoice(id: string) {
+  return request<{ id: string; deleted: boolean }>(`/voices/${id}`, { method: "DELETE" });
 }
 
 export async function scorePronunciation(file: Blob | null, targetText: string, sentenceId?: string) {

@@ -3,7 +3,7 @@ use axum::{
     extract::{Multipart, Path, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use serde_json::{json, Value};
@@ -16,13 +16,13 @@ use crate::{
         CurrentUser,
     },
     dto::{
-        AnalyzeRequest, ArxivRecommendation, LoginRequest, LoginResponse, OpenArxivRequest,
-        PassageDto, PassageListItem, PassageRow, PronunciationResponse, TtsRequest, TtsResponse,
-        UserDto, VoiceProfileResponse, WordInspectRequest, WordInspectResponse,
-        WritingPromptRequest, WritingPromptResponse, WritingResponse, WritingSubmitRequest,
+        AnalyzeRequest, ArxivRecommendation, DeleteVoiceResponse, LoginRequest, LoginResponse,
+        OpenArxivRequest, PassageDto, PassageListItem, PassageRow, PronunciationResponse,
+        TtsRequest, TtsResponse, UserDto, VoiceProfileResponse, WordInspectRequest,
+        WordInspectResponse, WritingPromptRequest, WritingPromptResponse, WritingResponse,
+        WritingSubmitRequest,
     },
     error::{AppError, AppResult},
-    providers::find_arxiv,
     AppState,
 };
 
@@ -37,6 +37,7 @@ pub fn router(state: AppState) -> Router {
         .route("/words/inspect", post(inspect_word))
         .route("/tts", post(tts))
         .route("/voices/upload", post(upload_voice))
+        .route("/voices/:id", delete(delete_voice))
         .route("/pronunciation/score", post(score_pronunciation))
         .route("/writing/prompts", post(writing_prompt))
         .route("/writing/submit", post(submit_writing))
@@ -46,8 +47,18 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
-async fn health() -> Json<Value> {
-    Json(json!({"ok": true, "service": "lingovector-api", "version": "0.3.0"}))
+async fn health(State(state): State<AppState>) -> Json<Value> {
+    let database_ready = sqlx::query_scalar::<_, i32>("SELECT 1")
+        .fetch_one(&state.pool)
+        .await
+        .map(|value| value == 1)
+        .unwrap_or(false);
+    Json(json!({
+        "ok": database_ready,
+        "service": "lingovector-api",
+        "version": "0.3.0",
+        "database": {"ready": database_ready}
+    }))
 }
 
 async fn login(
@@ -226,6 +237,8 @@ async fn upload_voice(
     let mut name = "My voice".to_string();
     let mut audio_bytes = Vec::new();
     let mut filename = "voice-sample.webm".to_string();
+    let mut content_type = "application/octet-stream".to_string();
+    let consent_version = "voice-consent-v1".to_string();
 
     while let Some(field) = multipart
         .next_field()
@@ -247,6 +260,9 @@ async fn upload_voice(
             if let Some(file_name) = field.file_name() {
                 filename = file_name.to_string();
             }
+            if let Some(kind) = field.content_type() {
+                content_type = kind.to_string();
+            }
             audio_bytes = field
                 .bytes()
                 .await
@@ -266,10 +282,17 @@ async fn upload_voice(
         .await?;
     let cloned = state.voice.clone_voice(&audio_bytes, &consent_text).await?;
     let id = Uuid::new_v4();
+    let metadata = json!({
+        "original_filename": filename,
+        "content_type": content_type,
+        "byte_size": audio_bytes.len(),
+        "warning": "Voice cloning requires explicit user consent and should only use the user's own voice."
+    });
     sqlx::query(
         r#"
-        INSERT INTO voice_profiles (id, user_id, name, provider, provider_voice_id, consent_text, storage_path)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO voice_profiles
+        (id, user_id, name, provider, provider_voice_id, consent_text, storage_path, consent_version, metadata)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         "#,
     )
     .bind(id)
@@ -278,7 +301,9 @@ async fn upload_voice(
     .bind(&cloned.provider)
     .bind(&cloned.provider_voice_id)
     .bind(&consent_text)
-    .bind(stored)
+    .bind(&stored)
+    .bind(&consent_version)
+    .bind(&metadata)
     .execute(&state.pool)
     .await?;
     Ok(Json(VoiceProfileResponse {
@@ -286,7 +311,32 @@ async fn upload_voice(
         provider: cloned.provider,
         provider_voice_id: cloned.provider_voice_id,
         consent_text,
+        consent_version,
+        metadata,
     }))
+}
+
+async fn delete_voice(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<DeleteVoiceResponse>> {
+    let row = sqlx::query(
+        "SELECT storage_path FROM voice_profiles WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
+    )
+    .bind(id)
+    .bind(user.id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or(AppError::NotFound)?;
+    let storage_path: String = row.get("storage_path");
+    state.storage.delete(&storage_path).await?;
+    sqlx::query("UPDATE voice_profiles SET deleted_at = now() WHERE id = $1 AND user_id = $2")
+        .bind(id)
+        .bind(user.id)
+        .execute(&state.pool)
+        .await?;
+    Ok(Json(DeleteVoiceResponse { id, deleted: true }))
 }
 
 async fn score_pronunciation(
@@ -394,8 +444,8 @@ async fn submit_writing(
     .bind(id)
     .bind(user.id)
     .bind(payload.passage_id)
-    .bind(payload.prompt)
-    .bind(payload.response)
+    .bind(&payload.prompt)
+    .bind(&payload.response)
     .bind(&feedback.scores)
     .bind(&feedback.korean_like_translation)
     .bind(&feedback.revised)
@@ -406,6 +456,7 @@ async fn submit_writing(
         id,
         scores: feedback.scores,
         korean_like_translation: feedback.korean_like_translation,
+        original: payload.response,
         revised: feedback.revised,
         explanation: feedback.explanation,
     }))
@@ -423,7 +474,11 @@ async fn open_arxiv(
     CurrentUser(user): CurrentUser,
     Json(payload): Json<OpenArxivRequest>,
 ) -> AppResult<Json<PassageDto>> {
-    let paper = find_arxiv(&payload.id).ok_or(AppError::NotFound)?;
+    let paper = state
+        .arxiv
+        .find(&payload.id)
+        .await?
+        .ok_or(AppError::NotFound)?;
     let request = AnalyzeRequest {
         title: Some(paper.title),
         text: paper.abstract_text,

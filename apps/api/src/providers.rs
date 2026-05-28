@@ -135,7 +135,11 @@ impl LlmProvider for OpenAiCompatibleLlmProvider {
         let prompt = format!(
             "Analyze this passage for Korean high school students. Return strict JSON matching this schema: {schema}. Passage: {text}"
         );
-        match self.chat_json(prompt).await.and_then(parse_sentence_analysis) {
+        match self
+            .chat_json(prompt)
+            .await
+            .and_then(parse_sentence_analysis)
+        {
             Ok(sentences) if !sentences.is_empty() => Ok(sentences),
             Ok(_) => self.fallback.analyze_passage(text).await,
             Err(_) => self.fallback.analyze_passage(text).await,
@@ -169,12 +173,13 @@ impl LlmProvider for OpenAiCompatibleLlmProvider {
             "Create one English writing prompt from this passage for a Korean high school student. Return JSON {{\"prompt\":\"...\"}} only. Passage: {passage}"
         );
         match self.chat_json(prompt).await {
-            Ok(value) => value
-                .get("prompt")
-                .and_then(Value::as_str)
-                .map(ToOwned::to_owned)
-                .ok_or_else(|| AppError::Provider("invalid writing prompt JSON".to_string()))
-                .or_else(|_| self.fallback.writing_prompt(passage).await),
+            Ok(value) => {
+                if let Some(prompt) = value.get("prompt").and_then(Value::as_str) {
+                    Ok(prompt.to_string())
+                } else {
+                    self.fallback.writing_prompt(passage).await
+                }
+            }
             Err(_) => self.fallback.writing_prompt(passage).await,
         }
     }
@@ -204,7 +209,9 @@ impl OpenAiCompatibleLlmProvider {
             messages: vec![
                 ChatMessage {
                     role: "system",
-                    content: "You are Lingovector. Return valid JSON only. Do not include markdown.".to_string(),
+                    content:
+                        "You are Lingovector. Return valid JSON only. Do not include markdown."
+                            .to_string(),
                 },
                 ChatMessage {
                     role: "user",
@@ -512,7 +519,9 @@ impl VoiceProvider for SupertoneVoiceProvider {
                     .get("voice_id")
                     .or_else(|| value.get("id"))
                     .and_then(Value::as_str)
-                    .ok_or_else(|| AppError::Provider("voice provider did not return voice_id".to_string()));
+                    .ok_or_else(|| {
+                        AppError::Provider("voice provider did not return voice_id".to_string())
+                    });
                 match provider_voice_id {
                     Ok(provider_voice_id) => Ok(VoiceClone {
                         provider: if self.local_url.is_some() {
@@ -802,7 +811,9 @@ fn parse_sentence_analysis(value: Value) -> AppResult<Vec<AnalyzedSentence>> {
     let list = value
         .get("sentences")
         .and_then(Value::as_array)
-        .ok_or_else(|| AppError::Provider("sentence analysis JSON missing sentences".to_string()))?;
+        .ok_or_else(|| {
+            AppError::Provider("sentence analysis JSON missing sentences".to_string())
+        })?;
     list.iter()
         .enumerate()
         .map(|(index, item)| {
@@ -888,24 +899,32 @@ fn normalize_writing_scores(value: Value) -> Value {
 
 fn normalize_pronunciation_score(value: Value, target_text: &str) -> Value {
     let mut score = serde_json::Map::new();
-    for key in ["pronunciation", "stress", "intonation", "speed", "rhythm", "overall"] {
+    for key in [
+        "pronunciation",
+        "stress",
+        "intonation",
+        "speed",
+        "rhythm",
+        "overall",
+    ] {
         let raw = value.get(key).and_then(Value::as_i64).unwrap_or(70);
         score.insert(key.to_string(), json!(raw.clamp(0, 100)));
     }
     score.insert("target_text".to_string(), json!(target_text));
     score.insert(
         "feedback".to_string(),
-        value.get("feedback")
+        value
+            .get("feedback")
             .filter(|feedback| feedback.is_array())
             .cloned()
             .unwrap_or_else(|| json!([])),
     );
     score.insert(
         "provider".to_string(),
-        value.get("provider")
+        json!(value
+            .get("provider")
             .and_then(Value::as_str)
-            .unwrap_or("http")
-            .into(),
+            .unwrap_or("http")),
     );
     Value::Object(score)
 }
@@ -1175,5 +1194,39 @@ mod tests {
         ] {
             assert!(categories.iter().any(|category| category == required));
         }
+    }
+
+    #[tokio::test]
+    async fn llm_provider_falls_back_to_mock_analysis() {
+        let provider = OpenAiCompatibleLlmProvider {
+            api_url: "http://127.0.0.1:9/v1/chat/completions".to_string(),
+            api_key: None,
+            model: "test".to_string(),
+            fallback: MockLlmProvider,
+        };
+        let analysis = provider
+            .analyze_passage("Learning requires attention to sentence logic.")
+            .await
+            .unwrap();
+        assert_eq!(analysis.len(), 1);
+        assert!(analysis[0]
+            .simple_english
+            .contains("This sentence mainly says"));
+    }
+
+    #[tokio::test]
+    async fn writing_score_schema_has_all_required_dimensions() {
+        let feedback = MockLlmProvider
+            .score_writing(
+                "Explain the passage.",
+                "I think that it is very important thing because students need many informations.",
+            )
+            .await
+            .unwrap();
+        for key in WRITING_SCORE_KEYS {
+            let score = feedback.scores.get(key).and_then(Value::as_i64);
+            assert!(matches!(score, Some(1..=10)));
+        }
+        assert!(feedback.korean_like_translation.as_array().unwrap().len() >= 2);
     }
 }

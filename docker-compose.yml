@@ -7,6 +7,11 @@ services:
       POSTGRES_DB: lingovector
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d lingovector"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     volumes:
       - lingovector-postgres:/var/lib/postgresql/data
 

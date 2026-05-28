@@ -7,6 +7,7 @@ import {
   Play,
   RefreshCw,
   Send,
+  Trash2,
   Upload,
   Volume2,
   Wand2,
@@ -14,6 +15,7 @@ import {
 import { useMemo, useRef, useState } from "react";
 import {
   arxivRecommendations,
+  deleteVoice,
   inspectWord,
   mediaUrl,
   openArxiv,
@@ -23,7 +25,7 @@ import {
   uploadVoice,
   writingPrompt,
 } from "@/lib/api";
-import type { ArxivRecommendation, Passage, Sentence, TtsResult, WordInspect, WritingResult } from "@/lib/types";
+import type { ArxivRecommendation, Passage, Sentence, TtsResult, VoiceProfile, WordInspect, WritingResult } from "@/lib/types";
 
 type Tab = "audio" | "pronunciation" | "writing" | "arxiv";
 
@@ -359,6 +361,10 @@ function WritingTutor({ passage }: { passage: Passage }) {
               <pre>{JSON.stringify(result.korean_like_translation, null, 2)}</pre>
             </div>
             <div className="analysis-card">
+              <h3>Before</h3>
+              <p>{result.original}</p>
+            </div>
+            <div className="analysis-card">
               <h3>Revised Version</h3>
               <p>{result.revised}</p>
             </div>
@@ -421,12 +427,21 @@ function ArxivLearning({ onPassage }: { onPassage: (passage: Passage) => void })
 export function VoiceConsentUploader() {
   const [file, setFile] = useState<File | null>(null);
   const [consent, setConsent] = useState("I consent to using this voice sample only for my Lingovector study voice profile.");
-  const [result, setResult] = useState("");
+  const [profile, setProfile] = useState<VoiceProfile | null>(null);
+  const [status, setStatus] = useState("");
 
   async function submit() {
     if (!file) return;
     const response = await uploadVoice(file, consent, "Student voice");
-    setResult(`${response.provider}: ${response.provider_voice_id}`);
+    setProfile(response);
+    setStatus(`${response.provider}: ${response.provider_voice_id}`);
+  }
+
+  async function remove() {
+    if (!profile) return;
+    await deleteVoice(profile.id);
+    setStatus("Voice profile deleted.");
+    setProfile(null);
   }
 
   return (
@@ -434,7 +449,7 @@ export function VoiceConsentUploader() {
       <p className="mini-title">Voice Cloning</p>
       <div className="consent-box">
         <Upload size={18} />
-        <span>Upload only your own voice. The backend stores consent text with the voice profile before provider processing.</span>
+        <span>Voice cloning requires your explicit consent. Upload only your own voice; consent text and metadata are stored with the profile.</span>
       </div>
       <div className="field">
         <label htmlFor="voice-file">Voice sample</label>
@@ -447,7 +462,13 @@ export function VoiceConsentUploader() {
       <button className="secondary" onClick={submit}>
         <Upload size={17} /> Upload voice
       </button>
-      {result ? <p>{result}</p> : null}
+      {profile ? (
+        <button className="danger" onClick={remove}>
+          <Trash2 size={17} /> Delete voice
+        </button>
+      ) : null}
+      {status ? <p>{status}</p> : null}
+      {profile ? <pre>{JSON.stringify({ consent_version: profile.consent_version, metadata: profile.metadata }, null, 2)}</pre> : null}
     </div>
   );
 }

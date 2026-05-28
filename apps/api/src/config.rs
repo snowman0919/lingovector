@@ -33,6 +33,12 @@ impl Config {
         });
         let jwt_secret =
             env::var("JWT_SECRET").unwrap_or_else(|_| "dev-only-change-me".to_string());
+        let environment = env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string());
+        if !matches!(environment.as_str(), "development" | "test")
+            && jwt_secret == "dev-only-change-me"
+        {
+            anyhow::bail!("JWT_SECRET must be set to a non-default value outside development");
+        }
         let allowed_email_domain =
             env::var("ALLOWED_EMAIL_DOMAIN").unwrap_or_else(|_| "dimigo.hs.kr".to_string());
         let google_client_id = env::var("GOOGLE_CLIENT_ID").ok().filter(|v| !v.is_empty());
@@ -56,7 +62,7 @@ impl Config {
             dev_auth,
             cors_origins,
             storage_dir,
-            environment: env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()),
+            environment,
             supertone_api_key: env::var("SUPERTONE_API_KEY").ok().filter(|v| !v.is_empty()),
             supertone_base_url: env::var("SUPERTONE_BASE_URL")
                 .unwrap_or_else(|_| "https://api.supertone.ai".to_string()),

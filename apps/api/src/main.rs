@@ -11,9 +11,10 @@ use std::sync::Arc;
 use axum::http::{HeaderValue, Method};
 use config::Config;
 use providers::{
-    ArxivProvider, LlmProvider, MockArxivProvider, MockLlmProvider, MockPronunciationProvider,
-    MockTtsProvider, MockVoiceProvider, PronunciationProvider, SupertoneTtsProvider, TtsProvider,
-    VoiceProvider,
+    ArxivProvider, HttpPronunciationProvider, LlmProvider, MockArxivProvider, MockLlmProvider,
+    MockPronunciationProvider, MockTtsProvider, MockVoiceProvider, OpenAiCompatibleLlmProvider,
+    PronunciationProvider, RealArxivProvider, SupertoneTtsProvider, SupertoneVoiceProvider,
+    TtsProvider, VoiceProvider,
 };
 use sqlx::postgres::PgPoolOptions;
 use storage::LocalStorage;
@@ -50,23 +51,61 @@ async fn main() -> anyhow::Result<()> {
     tokio::fs::create_dir_all(&config.storage_dir).await?;
 
     let storage = LocalStorage::new(config.storage_dir.clone());
+    let llm: Arc<dyn LlmProvider> = if let Some(api_url) = &config.llm_api_url {
+        Arc::new(OpenAiCompatibleLlmProvider {
+            api_url: api_url.clone(),
+            api_key: config.llm_api_key.clone(),
+            model: config.llm_model.clone(),
+            fallback: MockLlmProvider,
+        })
+    } else {
+        Arc::new(MockLlmProvider)
+    };
     let tts: Arc<dyn TtsProvider> =
         if config.supertone_api_key.is_some() || config.supertone_local_tts_url.is_some() {
             Arc::new(SupertoneTtsProvider {
                 local_url: config.supertone_local_tts_url.clone(),
+                api_key: config.supertone_api_key.clone(),
+                base_url: config.supertone_base_url.clone(),
+                fallback: MockTtsProvider,
             })
         } else {
             Arc::new(MockTtsProvider)
         };
+    let voice: Arc<dyn VoiceProvider> =
+        if config.supertone_api_key.is_some() || config.supertone_local_voice_url.is_some() {
+            Arc::new(SupertoneVoiceProvider {
+                local_url: config.supertone_local_voice_url.clone(),
+                api_key: config.supertone_api_key.clone(),
+                base_url: config.supertone_base_url.clone(),
+                fallback: MockVoiceProvider,
+            })
+        } else {
+            Arc::new(MockVoiceProvider)
+        };
+    let pronunciation: Arc<dyn PronunciationProvider> =
+        if let Some(url) = &config.pronunciation_provider_url {
+            Arc::new(HttpPronunciationProvider {
+                url: url.clone(),
+                fallback: MockPronunciationProvider,
+            })
+        } else {
+            Arc::new(MockPronunciationProvider)
+        };
+    let arxiv: Arc<dyn ArxivProvider> = if config.arxiv_real_enabled {
+        Arc::new(RealArxivProvider::new())
+    } else {
+        Arc::new(MockArxivProvider)
+    };
     let state = AppState {
         config: config.clone(),
         pool,
         storage,
-        llm: Arc::new(MockLlmProvider),
+        llm,
         tts,
-        voice: Arc::new(MockVoiceProvider),
-        pronunciation: Arc::new(MockPronunciationProvider),
-        arxiv: Arc::new(MockArxivProvider),
+        voice,
+        pronunciation,
+        arxiv,
     };
 
     let origins = config

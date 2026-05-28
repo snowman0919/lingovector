@@ -4,13 +4,17 @@
   "version": "0.3.0",
   "scripts": {
     "dev": "npm run dev:web",
+    "dev:db": "docker compose up -d postgres",
+    "dev:db:logs": "docker compose logs -f postgres",
     "dev:web": "npm --workspace apps/web run dev",
     "dev:api": "cargo run -p lingovector-api",
+    "dev:health": "curl -fsS http://127.0.0.1:8080/health",
     "build": "npm --workspace apps/web run build",
     "lint": "npm --workspace apps/web run lint",
     "format:api": "cargo fmt --all",
     "clippy:api": "cargo clippy --workspace --all-targets -- -D warnings",
-    "test:api": "cargo test --workspace"
+    "test:api": "cargo test --workspace",
+    "test:web": "node scripts/frontend-smoke.mjs"
   },
   "workspaces": [
     "apps/web"
