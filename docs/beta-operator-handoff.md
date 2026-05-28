@@ -14,8 +14,10 @@ Use this checklist when handing Lingovector to the staging/beta operator.
 ## Start Staging
 
 - [ ] `export COMPOSE_PROJECT_NAME=lingovector-staging`
+- [ ] Configure Cloudflare Tunnel public hostnames: web -> `http://web:3000`, API -> `http://api:8080`
+- [ ] Set `CLOUDFLARE_TUNNEL_TOKEN` outside git
 - [ ] Build: `docker compose --env-file .env.staging -f docker-compose.production.example.yml build`
-- [ ] Start: `LINGOVECTOR_ENV_FILE=.env.staging docker compose --env-file .env.staging -f docker-compose.production.example.yml up -d`
+- [ ] Start: `LINGOVECTOR_ENV_FILE=.env.staging docker compose --env-file .env.staging -f docker-compose.production.example.yml -f docker-compose.cloudflare.example.yml up -d`
 - [ ] Health: `curl -fsS https://YOUR_STAGING_API_HOST/health`
 - [ ] Logs: inspect API/web logs for errors and confirm no secrets are printed.
 

@@ -59,7 +59,8 @@ Use this for staging rehearsal and every beta deploy window. Do not deploy from 
 - [ ] Confirm response includes `"ok": true`
 - [ ] Start frontend
 - [ ] Open `https://YOUR_BETA_FRONTEND_HOST`
-- [ ] Confirm reverse proxy or Cloudflare Tunnel is using HTTPS
+- [ ] Confirm Cloudflare Tunnel is using HTTPS public hostnames and routing web/API to internal services
+- [ ] Confirm Postgres is not publicly reachable
 
 ## Smoke Tests
 

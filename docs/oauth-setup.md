@@ -16,8 +16,8 @@ Use this checklist for local, staging, and production OAuth setup. Do not commit
    - Name: use a clear name such as `Lingovector Staging Web`.
 4. Add Authorized JavaScript origins:
    - Local: `http://localhost:3000`
-   - Staging: `https://YOUR_STAGING_FRONTEND_HOST`
-   - Production: `https://YOUR_PRODUCTION_FRONTEND_HOST`
+   - Staging through Cloudflare Tunnel: `https://staging.lingovector.example.com`
+   - Production through Cloudflare Tunnel: `https://lingovector.example.com`
 5. If a redirect-based flow is introduced later, add redirect URIs separately:
    - Local: `http://localhost:3000/auth/callback`
    - Staging: `https://YOUR_STAGING_FRONTEND_HOST/auth/callback`
@@ -43,9 +43,18 @@ NEXT_PUBLIC_GOOGLE_CLIENT_ID=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com
 Staging and production must also set exact HTTPS CORS origins:
 
 ```text
-CORS_ORIGINS=https://YOUR_STAGING_FRONTEND_HOST
-NEXT_PUBLIC_API_BASE_URL=https://YOUR_STAGING_API_HOST
+CORS_ORIGINS=https://staging.lingovector.example.com
+NEXT_PUBLIC_API_BASE_URL=https://api-staging.lingovector.example.com
 ```
+
+For production split hostnames:
+
+```text
+CORS_ORIGINS=https://lingovector.example.com
+NEXT_PUBLIC_API_BASE_URL=https://api.lingovector.example.com
+```
+
+Cloudflare terminates HTTPS publicly. The browser still sees the final HTTPS origin, so Google OAuth Authorized JavaScript origins and backend CORS must use those Cloudflare hostnames. Local container traffic behind the tunnel may remain HTTP.
 
 ## Backend Enforcement
 
@@ -93,6 +102,7 @@ unset LINGOVECTOR_AUTH_TOKEN
 - The browser origin must exactly match an Authorized JavaScript origin.
 - Include scheme and host, for example `https://staging.example.edu`.
 - Do not use `localhost` for staging/production OAuth.
+- When using Cloudflare Tunnel, use the final public Cloudflare hostname, not the Docker service name or Linux localhost address.
 
 ### Missing Client ID
 
@@ -108,6 +118,7 @@ unset LINGOVECTOR_AUTH_TOKEN
 ### Token Accepted by Frontend but Rejected by Backend
 
 - `GOOGLE_CLIENT_ID` mismatch between frontend build and backend env.
+- `NEXT_PUBLIC_API_BASE_URL` points to a different API hostname than the one allowed by CORS.
 - ID token audience belongs to a different OAuth client.
 - `ALLOWED_EMAIL_DOMAIN` is not `dimigo.hs.kr`.
 - Google did not mark `email_verified=true`.

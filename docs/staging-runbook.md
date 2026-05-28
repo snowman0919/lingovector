@@ -10,8 +10,8 @@ Do not use real student data in staging unless a teacher/admin has explicitly ap
 - Node.js 22+ and npm for smoke scripts.
 - Rust stable only if running local non-Docker checks.
 - Access to a staging hostname or tunnel, for example:
-  - Frontend: `https://staging-lingovector.example.edu`
-  - API: `https://staging-lingovector-api.example.edu`
+  - Frontend: `https://staging.lingovector.example.com`
+  - API: `https://api-staging.lingovector.example.com`
 - Google OAuth web client configured for the staging frontend origin.
 - A staging PostgreSQL database or the compose-provided PostgreSQL service.
 - No production secrets copied casually into staging.
@@ -65,12 +65,40 @@ In Google Cloud Console, configure the staging OAuth web client:
 
 The `@dimigo.hs.kr` restriction must still apply in staging. Verify that a non-school Google account is rejected.
 
+## Cloudflare Tunnel Staging Setup
+
+Cloudflare Tunnel is the expected public entrypoint for staging. Prefer the Compose `cloudflared` overlay:
+
+```bash
+export COMPOSE_PROJECT_NAME=lingovector-staging
+export LINGOVECTOR_ENV_FILE=.env.staging
+export CLOUDFLARE_TUNNEL_TOKEN=PASTE_TOKEN_IN_SHELL_ONLY
+```
+
+In Cloudflare Zero Trust, route public hostnames to internal Docker services:
+
+```text
+staging.lingovector.example.com      -> http://web:3000
+api-staging.lingovector.example.com  -> http://api:8080
+```
+
+Then use:
+
+```text
+CORS_ORIGINS=https://staging.lingovector.example.com
+NEXT_PUBLIC_API_BASE_URL=https://api-staging.lingovector.example.com
+```
+
+Do not publish Postgres. Do not commit the tunnel token.
+
 ## Build
 
 Build production-like images using the staging env file:
 
 ```bash
-docker compose --env-file .env.staging -f docker-compose.production.example.yml build
+docker compose --env-file .env.staging \
+  -f docker-compose.production.example.yml \
+  -f docker-compose.cloudflare.example.yml build
 ```
 
 To build individual images:
@@ -91,13 +119,17 @@ Start the stack locally, bound to localhost ports:
 
 ```bash
 LINGOVECTOR_ENV_FILE=.env.staging \
-docker compose --env-file .env.staging -f docker-compose.production.example.yml up -d
+docker compose --env-file .env.staging \
+  -f docker-compose.production.example.yml \
+  -f docker-compose.cloudflare.example.yml up -d
 ```
 
 Check container state:
 
 ```bash
-docker compose --env-file .env.staging -f docker-compose.production.example.yml ps
+docker compose --env-file .env.staging \
+  -f docker-compose.production.example.yml \
+  -f docker-compose.cloudflare.example.yml ps
 ```
 
 ## Healthcheck
@@ -111,7 +143,7 @@ curl -fsS http://127.0.0.1:8080/health
 Through the staging API hostname or tunnel:
 
 ```bash
-curl -fsS https://YOUR_STAGING_API_HOST/health
+curl -fsS https://api-staging.lingovector.example.com/health
 ```
 
 Expected response includes `"ok": true` and `"database": {"ready": true}`.
@@ -123,6 +155,7 @@ Inspect recent logs without printing env files or secrets:
 ```bash
 docker compose --env-file .env.staging -f docker-compose.production.example.yml logs --tail=200 api
 docker compose --env-file .env.staging -f docker-compose.production.example.yml logs --tail=100 web
+docker compose --env-file .env.staging -f docker-compose.production.example.yml -f docker-compose.cloudflare.example.yml logs --tail=100 cloudflared
 ```
 
 Logs should show request paths and request IDs, not tokens, secrets, raw voice files, or sensitive request bodies.
@@ -134,7 +167,7 @@ Production-like staging uses Google OAuth, so dev-token scripts are not expected
 Unauthenticated staging checks:
 
 ```bash
-STAGING_API_BASE_URL=https://YOUR_STAGING_API_HOST npm run test:staging-smoke
+STAGING_API_BASE_URL=https://api-staging.lingovector.example.com npm run test:staging-smoke
 ```
 
 Authenticated staging checks:

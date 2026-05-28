@@ -8,7 +8,7 @@ This document describes a production deployment rehearsal for Lingovector. It is
 - Rust Axum API runs on `127.0.0.1:8080`.
 - PostgreSQL runs as a managed database or a server-local PostgreSQL service/container.
 - Runtime storage stores generated TTS audio and uploaded voice samples under `STORAGE_DIR`; local disk is acceptable for a small rehearsal, but object storage should replace local disk before larger use.
-- Nginx, Caddy, another reverse proxy, or Cloudflare Tunnel terminates HTTPS and routes traffic to the local frontend and API.
+- Cloudflare Tunnel is the recommended public entrypoint. Do not assume inbound public `80` or `443` ports are open. Nginx/Caddy can still be used locally if a future single-domain reverse proxy is added.
 
 Student-facing UI is Korean for the Dimigo beta. English passages, English examples, definitions, generated Simple English explanations, paper titles/abstracts, and student-written English remain in English so Lingovector teaches English-first thinking with Korean support instead of translation memorization.
 
@@ -206,64 +206,32 @@ npm run ops:cleanup-local-output -- --delete
 
 This cleanup script is intentionally scoped to `local-output`. Do not use it for `STORAGE_DIR` user data. For MVP beta operations, review storage weekly and manually decide whether old generated audio can be removed after confirming product expectations and privacy policy.
 
-## Reverse Proxy Example
+## Cloudflare Tunnel Default
 
-Example Nginx split-host configuration:
+For the current frontend/API/CORS design, use split public hostnames:
 
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name YOUR_BETA_FRONTEND_HOST;
-
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Request-Id $request_id;
-    }
-}
-
-server {
-    listen 443 ssl http2;
-    server_name YOUR_BETA_API_HOST;
-
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Request-Id $request_id;
-    }
-}
+```text
+https://lingovector.example.com      -> web
+https://api.lingovector.example.com  -> api
 ```
 
 Set:
 
 ```text
-CORS_ORIGINS=https://YOUR_BETA_FRONTEND_HOST
-NEXT_PUBLIC_API_BASE_URL=https://YOUR_BETA_API_HOST
+CORS_ORIGINS=https://lingovector.example.com
+NEXT_PUBLIC_API_BASE_URL=https://api.lingovector.example.com
 ```
 
 HTTPS is required for production Google sign-in and microphone recording. Google OAuth authorized JavaScript origins must include `https://YOUR_BETA_FRONTEND_HOST`. If a redirect-based OAuth flow is later added, register a production redirect URI such as `https://YOUR_BETA_FRONTEND_HOST/auth/callback` and keep the local redirect URI separate.
 
-## Cloudflare Tunnel Notes
+When `cloudflared` runs as a Compose service, configure Cloudflare public hostnames to the internal Docker service URLs:
 
-For Cloudflare Tunnel, route public hostnames to local services:
-
-```yaml
-tunnel: YOUR_TUNNEL_ID
-credentials-file: /etc/cloudflared/YOUR_TUNNEL_ID.json
-
-ingress:
-  - hostname: YOUR_BETA_FRONTEND_HOST
-    service: http://localhost:3000
-  - hostname: YOUR_BETA_API_HOST
-    service: http://localhost:8080
-  - service: http_status:404
+```text
+lingovector.example.com      -> http://web:3000
+api.lingovector.example.com  -> http://api:8080
 ```
 
-Use the same `CORS_ORIGINS` and `NEXT_PUBLIC_API_BASE_URL` values as the public HTTPS hostnames.
+Use [cloudflare-tunnel.md](cloudflare-tunnel.md) for the full Cloudflare Tunnel runbook. Use [linux-server-runbook.md](linux-server-runbook.md) for Linux server operations.
 
 ## Production Startup Checklist
 
@@ -276,7 +244,7 @@ Use the same `CORS_ORIGINS` and `NEXT_PUBLIC_API_BASE_URL` values as the public 
 - [ ] `CORS_ORIGINS` is the exact HTTPS frontend origin.
 - [ ] Database backup is complete.
 - [ ] Migration check reviewed.
-- [ ] Reverse proxy or tunnel routes HTTPS to ports `3000` and `8080`.
+- [ ] Cloudflare Tunnel routes HTTPS to `web:3000` and `api:8080`, or systemd `cloudflared` routes to `127.0.0.1:3000` and `127.0.0.1:8080`.
 - [ ] `/health` returns OK.
 - [ ] Manual `@dimigo.hs.kr` login succeeds.
 - [ ] Voice upload/delete beta privacy copy is visible.

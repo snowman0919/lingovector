@@ -1,0 +1,23 @@
+# Optional Cloudflare Tunnel overlay for docker-compose.production.example.yml.
+# Use with:
+#   CLOUDFLARE_TUNNEL_TOKEN=... \
+#   LINGOVECTOR_ENV_FILE=.env.staging \
+#   docker compose --env-file .env.staging \
+#     -f docker-compose.production.example.yml \
+#     -f docker-compose.cloudflare.example.yml up -d
+#
+# Do not commit real tunnel tokens. Configure public hostnames in Cloudflare
+# Zero Trust to route:
+#   https://lingovector.example.com      -> http://web:3000
+#   https://api.lingovector.example.com  -> http://api:8080
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN outside git}
+    depends_on:
+      web:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    restart: unless-stopped
