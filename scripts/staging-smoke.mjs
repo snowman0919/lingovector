@@ -1,5 +1,5 @@
-const API_BASE = process.env.STAGING_API_BASE_URL?.replace(/\/$/, "");
-const TOKEN = process.env.STAGING_AUTH_TOKEN;
+const API_BASE = (process.env.STAGING_API_BASE_URL ?? process.env.LINGOVECTOR_API_BASE_URL ?? process.env.API_BASE ?? "http://127.0.0.1:8080").replace(/\/$/, "");
+const TOKEN = process.env.STAGING_AUTH_TOKEN ?? process.env.LINGOVECTOR_AUTH_TOKEN;
 
 const allowedModes = new Set(["mock", "configured", "reachable", "failed", "disabled"]);
 
@@ -10,10 +10,6 @@ function fail(message) {
 
 function assert(condition, message) {
   if (!condition) fail(message);
-}
-
-if (!API_BASE) {
-  fail("STAGING_API_BASE_URL is required, for example https://staging-api.example.edu");
 }
 
 async function request(path, options = {}, token = TOKEN, allowStatuses = []) {
@@ -59,8 +55,8 @@ try {
   console.log(`protected route: unauthenticated /me rejected with ${protectedRoute.status}`);
 
   if (!TOKEN) {
-    console.log("STAGING_AUTH_TOKEN not set; skipping authenticated diagnostics, passage, TTS, and arXiv checks.");
-    console.log("Manual auth step: sign in with a verified @dimigo.hs.kr staging account and provide a short-lived bearer token only through STAGING_AUTH_TOKEN.");
+    console.log("STAGING_AUTH_TOKEN or LINGOVECTOR_AUTH_TOKEN not set; skipping authenticated diagnostics, passage, TTS, and arXiv checks.");
+    console.log("Manual auth step: sign in with a verified @dimigo.hs.kr staging account and provide a short-lived bearer token only through an environment variable.");
     process.exit(0);
   }
 

@@ -151,6 +151,20 @@ Authenticated staging checks:
 
 The script does not print the token. It checks `/health`, protected-route rejection, `/me`, diagnostics if enabled, passage analysis, TTS metadata, and arXiv title/abstract behavior.
 
+For a deeper authenticated check that also covers word inspection, pronunciation scoring, writing tutor, and arXiv open:
+
+```bash
+LINGOVECTOR_API_BASE_URL=https://YOUR_STAGING_API_HOST \
+LINGOVECTOR_AUTH_TOKEN=PASTE_TOKEN_IN_SHELL_ONLY \
+npm run test:authenticated-smoke
+```
+
+Unset the token after testing:
+
+```bash
+unset LINGOVECTOR_AUTH_TOKEN STAGING_AUTH_TOKEN
+```
+
 Local dev smoke scripts remain useful for non-staging API verification:
 
 ```bash
