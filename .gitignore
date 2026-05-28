@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+
+node_modules/
+.next/
+dist/
+target/
+
+apps/api/storage/
+apps/web/.next/
+
+.DS_Store
+*.log
+*.tsbuildinfo
