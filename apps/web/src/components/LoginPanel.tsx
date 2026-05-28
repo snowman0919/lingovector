@@ -5,6 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { login, setToken } from "@/lib/api";
 import type { User } from "@/lib/types";
 
+const DEV_LOGIN_VISIBLE = process.env.NODE_ENV !== "production";
+
 declare global {
   interface Window {
     google?: {
@@ -31,7 +33,7 @@ export function LoginPanel({ onLogin }: { onLogin: (user: User) => void }) {
       setToken(result.access_token);
       onLogin(result.user);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(readableLoginError(err));
     } finally {
       setBusy(false);
     }
@@ -70,15 +72,39 @@ export function LoginPanel({ onLogin }: { onLogin: (user: User) => void }) {
       <div className={`panel login-panel ${busy ? "loading" : ""}`}>
         <h2>Sign in</h2>
         <div id="google-login-button" />
-        <div className="field">
-          <label htmlFor="id-token">Google ID token or DEV_AUTH local token</label>
-          <input id="id-token" value={tokenInput} onChange={(event) => setTokenInput(event.target.value)} />
-        </div>
-        <button className="primary" onClick={() => completeLogin(tokenInput)}>
-          <LogIn size={17} /> Continue
-        </button>
+        {!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
+          <p className="helper-text">Google sign-in is not configured in this build. Ask your teacher or administrator to check the beta setup.</p>
+        ) : null}
+        {DEV_LOGIN_VISIBLE ? (
+          <>
+            <div className="field">
+              <label htmlFor="id-token">Local development token</label>
+              <input id="id-token" value={tokenInput} onChange={(event) => setTokenInput(event.target.value)} />
+            </div>
+            <button className="primary" onClick={() => completeLogin(tokenInput)}>
+              <LogIn size={17} /> Continue in dev mode
+            </button>
+          </>
+        ) : null}
         {error ? <div className="error">{error}</div> : null}
       </div>
     </section>
   );
+}
+
+function readableLoginError(error: unknown) {
+  const message = error instanceof Error ? error.message : "Login failed";
+  if (message.includes("email must be verified")) {
+    return "Your Google account email must be verified before you can use Lingovector.";
+  }
+  if (message.includes("dimigo.hs.kr") || message.includes("hosted domain")) {
+    return "Use your verified @dimigo.hs.kr Google account to sign in.";
+  }
+  if (message.includes("development login token is disabled")) {
+    return "Local development login is disabled on this server. Use Google sign-in.";
+  }
+  if (message.includes("unauthorized")) {
+    return "Sign-in failed. Please try again with your school Google account.";
+  }
+  return message;
 }

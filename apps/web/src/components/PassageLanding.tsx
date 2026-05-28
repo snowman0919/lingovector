@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, FileText } from "lucide-react";
+import { BookOpen, FileText, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { analyzePassage } from "@/lib/api";
 import type { Passage } from "@/lib/types";
@@ -14,6 +14,10 @@ export function PassageLanding({ onPassage }: { onPassage: (passage: Passage) =>
   const [error, setError] = useState("");
 
   async function submit() {
+    if (!text.trim()) {
+      setError("Paste a short English passage first.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -27,23 +31,39 @@ export function PassageLanding({ onPassage }: { onPassage: (passage: Passage) =>
 
   return (
     <section className={`panel input-panel ${busy ? "loading" : ""}`}>
-      <h2>Paste an English passage</h2>
+      <div className="input-intro">
+        <Sparkles size={20} />
+        <div>
+          <h2>Paste an English passage</h2>
+          <p>Lingovector splits the passage into sentences, explains meaning flow in simple English first, then helps with nuance, vocabulary, pronunciation, and writing.</p>
+        </div>
+      </div>
       <div className="field">
         <label htmlFor="title">Title</label>
         <input id="title" value={title} onChange={(event) => setTitle(event.target.value)} />
       </div>
       <div className="field">
-        <label htmlFor="passage">Passage</label>
-        <textarea id="passage" value={text} onChange={(event) => setText(event.target.value)} />
+        <label htmlFor="passage">Passage to study</label>
+        <textarea
+          id="passage"
+          value={text}
+          placeholder="Paste 2-6 English sentences from class, a textbook, or an article abstract."
+          onChange={(event) => setText(event.target.value)}
+        />
       </div>
       <div className="toolbar">
         <button className="primary" onClick={submit}>
-          <FileText size={17} /> Analyze
+          <FileText size={17} /> {busy ? "Analyzing..." : "Analyze passage"}
         </button>
-        <button className="secondary" onClick={() => setText(SAMPLE)}>
-          <BookOpen size={17} /> Sample
+        <button className="secondary" onClick={() => {
+          setTitle("Nuance and fluency");
+          setText(SAMPLE);
+          setError("");
+        }}>
+          <BookOpen size={17} /> Use sample passage
         </button>
       </div>
+      <p className="next-action">After analysis, choose a sentence on the left, read the center explanation, then click any word for deeper meaning.</p>
       {error ? <div className="error">{error}</div> : null}
     </section>
   );

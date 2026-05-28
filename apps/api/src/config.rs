@@ -26,34 +26,52 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> anyhow::Result<Self> {
         dotenvy::dotenv().ok();
-        let bind_addr = env::var("BIND_ADDR")
-            .unwrap_or_else(|_| "127.0.0.1:8080".to_string())
+        Self::from_lookup(|key| env::var(key).ok())
+    }
+
+    fn from_lookup(get: impl Fn(&str) -> Option<String>) -> anyhow::Result<Self> {
+        let bind_addr = get("BIND_ADDR")
+            .unwrap_or_else(|| "127.0.0.1:8080".to_string())
             .parse()?;
-        let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
+        let raw_database_url = get("DATABASE_URL").filter(|value| !value.trim().is_empty());
+        let database_url = raw_database_url.clone().unwrap_or_else(|| {
             "postgres://postgres:postgres@localhost:5432/lingovector".to_string()
         });
-        let jwt_secret =
-            env::var("JWT_SECRET").unwrap_or_else(|_| "dev-only-change-me".to_string());
-        let environment = env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string());
-        if !matches!(environment.as_str(), "development" | "test")
-            && jwt_secret == "dev-only-change-me"
-        {
-            anyhow::bail!("JWT_SECRET must be set to a non-default value outside development");
-        }
-        let allowed_email_domain =
-            env::var("ALLOWED_EMAIL_DOMAIN").unwrap_or_else(|_| "dimigo.hs.kr".to_string());
-        let google_client_id = env::var("GOOGLE_CLIENT_ID").ok().filter(|v| !v.is_empty());
-        let dev_auth = env_bool("DEV_AUTH", false);
-        let cors_origins = env::var("CORS_ORIGINS")
-            .unwrap_or_else(|_| "http://localhost:3000".to_string())
+        let raw_jwt_secret = get("JWT_SECRET").filter(|value| !value.trim().is_empty());
+        let jwt_secret = raw_jwt_secret
+            .clone()
+            .unwrap_or_else(|| "dev-only-change-me".to_string());
+        let environment = get("ENVIRONMENT").unwrap_or_else(|| "development".to_string());
+        let raw_allowed_email_domain =
+            get("ALLOWED_EMAIL_DOMAIN").filter(|value| !value.trim().is_empty());
+        let allowed_email_domain = raw_allowed_email_domain
+            .clone()
+            .unwrap_or_else(|| "dimigo.hs.kr".to_string());
+        let google_client_id = get("GOOGLE_CLIENT_ID").filter(|v| !v.is_empty());
+        let dev_auth = lookup_bool(&get, "DEV_AUTH", false);
+        let raw_cors_origins = get("CORS_ORIGINS").filter(|value| !value.trim().is_empty());
+        let cors_origins: Vec<String> = raw_cors_origins
+            .clone()
+            .unwrap_or_else(|| "http://localhost:3000".to_string())
             .split(',')
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(ToOwned::to_owned)
             .collect();
-        let storage_dir = env::var("STORAGE_DIR")
+        validate_production_config(ProductionConfigCheck {
+            environment: &environment,
+            raw_database_url: raw_database_url.as_deref(),
+            raw_jwt_secret: raw_jwt_secret.as_deref(),
+            raw_allowed_email_domain: raw_allowed_email_domain.as_deref(),
+            allowed_email_domain: &allowed_email_domain,
+            google_client_id: google_client_id.as_deref(),
+            dev_auth,
+            cors_origins: &cors_origins,
+            raw_cors_origins: raw_cors_origins.as_deref(),
+        })?;
+        let storage_dir = get("STORAGE_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("./storage"));
+            .unwrap_or_else(|| PathBuf::from("./storage"));
         Ok(Self {
             bind_addr,
             database_url,
@@ -64,23 +82,17 @@ impl Config {
             cors_origins,
             storage_dir,
             environment,
-            supertone_api_key: env::var("SUPERTONE_API_KEY").ok().filter(|v| !v.is_empty()),
-            supertone_base_url: env::var("SUPERTONE_BASE_URL")
-                .unwrap_or_else(|_| "https://api.supertone.ai".to_string()),
-            supertone_local_tts_url: env::var("SUPERTONE_LOCAL_TTS_URL")
-                .ok()
-                .filter(|v| !v.is_empty()),
-            supertone_local_voice_url: env::var("SUPERTONE_LOCAL_VOICE_URL")
-                .ok()
-                .filter(|v| !v.is_empty()),
-            pronunciation_provider_url: env::var("PRONUNCIATION_PROVIDER_URL")
-                .ok()
-                .filter(|v| !v.is_empty()),
-            arxiv_real_enabled: env_bool("ARXIV_REAL_ENABLED", false),
-            diagnostics_enabled: env_bool("DIAGNOSTICS_ENABLED", false),
-            llm_api_url: env::var("LLM_API_URL").ok().filter(|v| !v.is_empty()),
-            llm_api_key: env::var("LLM_API_KEY").ok().filter(|v| !v.is_empty()),
-            llm_model: env::var("LLM_MODEL").unwrap_or_else(|_| "gpt-4.1-mini".to_string()),
+            supertone_api_key: get("SUPERTONE_API_KEY").filter(|v| !v.is_empty()),
+            supertone_base_url: get("SUPERTONE_BASE_URL")
+                .unwrap_or_else(|| "https://api.supertone.ai".to_string()),
+            supertone_local_tts_url: get("SUPERTONE_LOCAL_TTS_URL").filter(|v| !v.is_empty()),
+            supertone_local_voice_url: get("SUPERTONE_LOCAL_VOICE_URL").filter(|v| !v.is_empty()),
+            pronunciation_provider_url: get("PRONUNCIATION_PROVIDER_URL").filter(|v| !v.is_empty()),
+            arxiv_real_enabled: lookup_bool(&get, "ARXIV_REAL_ENABLED", false),
+            diagnostics_enabled: lookup_bool(&get, "DIAGNOSTICS_ENABLED", false),
+            llm_api_url: get("LLM_API_URL").filter(|v| !v.is_empty()),
+            llm_api_key: get("LLM_API_KEY").filter(|v| !v.is_empty()),
+            llm_model: get("LLM_MODEL").unwrap_or_else(|| "gpt-4.1-mini".to_string()),
         })
     }
 
@@ -93,9 +105,169 @@ impl Config {
     }
 }
 
-fn env_bool(key: &str, default: bool) -> bool {
-    env::var(key)
-        .ok()
+fn lookup_bool(get: &impl Fn(&str) -> Option<String>, key: &str, default: bool) -> bool {
+    get(key)
         .map(|value| matches!(value.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
         .unwrap_or(default)
+}
+
+struct ProductionConfigCheck<'a> {
+    environment: &'a str,
+    raw_database_url: Option<&'a str>,
+    raw_jwt_secret: Option<&'a str>,
+    raw_allowed_email_domain: Option<&'a str>,
+    allowed_email_domain: &'a str,
+    google_client_id: Option<&'a str>,
+    dev_auth: bool,
+    cors_origins: &'a [String],
+    raw_cors_origins: Option<&'a str>,
+}
+
+fn validate_production_config(check: ProductionConfigCheck<'_>) -> anyhow::Result<()> {
+    if matches!(check.environment, "development" | "test") {
+        return Ok(());
+    }
+    if check.dev_auth {
+        anyhow::bail!("DEV_AUTH cannot be enabled when ENVIRONMENT is production");
+    }
+    if check.raw_database_url.is_none() {
+        anyhow::bail!("DATABASE_URL is required when ENVIRONMENT is production");
+    }
+    match check.raw_jwt_secret {
+        Some(secret) if secret != "dev-only-change-me" && secret.len() >= 32 => {}
+        Some(_) => anyhow::bail!(
+            "JWT_SECRET must be a non-default value with at least 32 characters when ENVIRONMENT is production"
+        ),
+        None => anyhow::bail!("JWT_SECRET is required when ENVIRONMENT is production"),
+    }
+    if check.google_client_id.is_none() {
+        anyhow::bail!("GOOGLE_CLIENT_ID is required when ENVIRONMENT is production");
+    }
+    if check.raw_allowed_email_domain.is_none() {
+        anyhow::bail!("ALLOWED_EMAIL_DOMAIN is required when ENVIRONMENT is production");
+    }
+    if check.allowed_email_domain != "dimigo.hs.kr" {
+        anyhow::bail!("ALLOWED_EMAIL_DOMAIN must be dimigo.hs.kr for the school-internal beta");
+    }
+    if check.raw_cors_origins.is_none() || check.cors_origins.is_empty() {
+        anyhow::bail!("CORS_ORIGINS is required when ENVIRONMENT is production");
+    }
+    for origin in check.cors_origins {
+        if origin == "*"
+            || origin.contains("localhost")
+            || origin.contains("127.0.0.1")
+            || !origin.starts_with("https://")
+        {
+            anyhow::bail!(
+                "CORS_ORIGINS must contain explicit https production origins when ENVIRONMENT is production"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn config_from(values: &[(&str, &str)]) -> anyhow::Result<Config> {
+        let map = values
+            .iter()
+            .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+            .collect::<HashMap<_, _>>();
+        Config::from_lookup(|key| map.get(key).cloned())
+    }
+
+    fn production_values() -> Vec<(&'static str, &'static str)> {
+        vec![
+            ("ENVIRONMENT", "production"),
+            (
+                "DATABASE_URL",
+                "postgres://user:pass@db.example/lingovector",
+            ),
+            ("JWT_SECRET", "0123456789abcdef0123456789abcdef"),
+            (
+                "GOOGLE_CLIENT_ID",
+                "google-client-id.apps.googleusercontent.com",
+            ),
+            ("ALLOWED_EMAIL_DOMAIN", "dimigo.hs.kr"),
+            ("CORS_ORIGINS", "https://lingovector.example.edu"),
+        ]
+    }
+
+    #[test]
+    fn development_config_keeps_local_defaults() {
+        let config = config_from(&[]).unwrap();
+        assert_eq!(config.environment, "development");
+        assert_eq!(config.allowed_email_domain, "dimigo.hs.kr");
+        assert!(!config.dev_auth);
+        assert_eq!(config.cors_origins, vec!["http://localhost:3000"]);
+    }
+
+    #[test]
+    fn production_config_requires_google_client_id() {
+        let mut values = production_values();
+        values.retain(|(key, _)| *key != "GOOGLE_CLIENT_ID");
+        let err = config_from(&values).unwrap_err().to_string();
+        assert!(err.contains("GOOGLE_CLIENT_ID is required"));
+    }
+
+    #[test]
+    fn production_config_requires_allowed_email_domain() {
+        let mut values = production_values();
+        values.retain(|(key, _)| *key != "ALLOWED_EMAIL_DOMAIN");
+        let err = config_from(&values).unwrap_err().to_string();
+        assert!(err.contains("ALLOWED_EMAIL_DOMAIN is required"));
+    }
+
+    #[test]
+    fn production_config_rejects_dev_auth() {
+        let mut values = production_values();
+        values.push(("DEV_AUTH", "true"));
+        let err = config_from(&values).unwrap_err().to_string();
+        assert!(err.contains("DEV_AUTH cannot be enabled"));
+    }
+
+    #[test]
+    fn production_config_rejects_insecure_jwt_secret() {
+        let mut values = production_values();
+        for item in &mut values {
+            if item.0 == "JWT_SECRET" {
+                item.1 = "dev-only-change-me";
+            }
+        }
+        let err = config_from(&values).unwrap_err().to_string();
+        assert!(err.contains("JWT_SECRET must be a non-default value"));
+    }
+
+    #[test]
+    fn production_config_rejects_localhost_cors() {
+        let mut values = production_values();
+        for item in &mut values {
+            if item.0 == "CORS_ORIGINS" {
+                item.1 = "http://localhost:3000";
+            }
+        }
+        let err = config_from(&values).unwrap_err().to_string();
+        assert!(err.contains("CORS_ORIGINS must contain explicit https production origins"));
+    }
+
+    #[test]
+    fn production_config_accepts_required_safe_values() {
+        let config = config_from(&production_values()).unwrap();
+        assert_eq!(config.environment, "production");
+        assert_eq!(config.allowed_email_domain, "dimigo.hs.kr");
+        assert!(!config.dev_auth);
+        assert_eq!(config.cors_origins, vec!["https://lingovector.example.edu"]);
+        assert!(!config.diagnostics_allowed());
+    }
+
+    #[test]
+    fn production_diagnostics_require_explicit_enable() {
+        let mut values = production_values();
+        values.push(("DIAGNOSTICS_ENABLED", "true"));
+        let config = config_from(&values).unwrap();
+        assert!(config.diagnostics_allowed());
+    }
 }

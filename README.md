@@ -77,12 +77,13 @@ The dev token is accepted only when `DEV_AUTH=true`. Real Google login still req
 
 ## Environment Variables
 
-- `DATABASE_URL`: PostgreSQL connection string.
-- `JWT_SECRET`: server-side session token signing secret. Use a long random value outside local development.
-- `DEV_AUTH`: allows `dev:*@dimigo.hs.kr` tokens only when explicitly `true`.
-- `GOOGLE_CLIENT_ID`: OAuth client ID used to verify Google ID token audience.
-- `ALLOWED_EMAIL_DOMAIN`: defaults to `dimigo.hs.kr`.
-- `CORS_ORIGINS`: comma-separated frontend origins.
+- `ENVIRONMENT`: use `development`, `test`, or `production`. Production enables fail-fast safety validation.
+- `DATABASE_URL`: PostgreSQL connection string. Required in production.
+- `JWT_SECRET`: server-side session token signing secret. In production it must be present, non-default, and at least 32 characters.
+- `DEV_AUTH`: allows `dev:*@dimigo.hs.kr` tokens only when explicitly `true`. Production rejects `DEV_AUTH=true`.
+- `GOOGLE_CLIENT_ID`: OAuth client ID used to verify Google ID token audience. Required in production.
+- `ALLOWED_EMAIL_DOMAIN`: must be `dimigo.hs.kr` for the school beta.
+- `CORS_ORIGINS`: comma-separated frontend origins. Production requires explicit `https://` origins, not localhost or `*`.
 - `STORAGE_DIR`: local audio and voice sample storage directory.
 - `SUPERTONE_API_KEY`: enables Supertone/Supertonic-3 API-mode TTS and voice paths. Empty uses mocks unless a local URL is set.
 - `SUPERTONE_BASE_URL`: Supertone API base URL.
@@ -99,6 +100,109 @@ The dev token is accepted only when `DEV_AUTH=true`. Real Google login still req
 - `NEXT_PUBLIC_DIAGNOSTICS_ENABLED`: shows the dev provider status tab in production builds only when explicitly `true`. Development builds show it automatically.
 
 Never commit real secrets.
+
+## Production Safety
+
+Production startup fails fast when required beta settings are missing or unsafe:
+
+- `DEV_AUTH=true` is rejected.
+- `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `ALLOWED_EMAIL_DOMAIN`, and `CORS_ORIGINS` are required.
+- `JWT_SECRET=dev-only-change-me`, short JWT secrets, wildcard CORS, localhost CORS, and non-HTTPS production CORS origins are rejected.
+- `/diagnostics/providers` is disabled in production unless `DIAGNOSTICS_ENABLED=true`.
+- The frontend diagnostics panel is hidden in production unless `NEXT_PUBLIC_DIAGNOSTICS_ENABLED=true`.
+
+Mock providers remain visible in developer diagnostics and smoke scripts. The student dashboard avoids exposing provider jargon during normal production use.
+
+## Google OAuth Beta Setup
+
+1. Create or select a Google Cloud project for the Lingovector beta.
+2. Configure the OAuth consent screen for an internal/school beta audience as appropriate for the school account setup.
+3. Create an OAuth 2.0 Web application client.
+4. Add local authorized JavaScript origin:
+
+   ```text
+   http://localhost:3000
+   ```
+
+5. Add production authorized JavaScript origin:
+
+   ```text
+   https://YOUR_BETA_FRONTEND_HOST
+   ```
+
+6. If your deployment flow uses redirect URIs, add placeholders matching your hosting setup:
+
+   ```text
+   http://localhost:3000
+   https://YOUR_BETA_FRONTEND_HOST
+   ```
+
+7. Set `GOOGLE_CLIENT_ID` on the backend and `NEXT_PUBLIC_GOOGLE_CLIENT_ID` on the frontend to the OAuth web client ID.
+8. Verify login manually:
+
+- A verified `student@dimigo.hs.kr` account can sign in.
+- A non-`@dimigo.hs.kr` account is rejected.
+- An unverified email is rejected.
+- Production UI does not show the local development token field.
+- Student-facing auth errors mention school Google account requirements clearly.
+
+## Real Provider Setup
+
+All provider integrations are env-gated. Leave values empty to use mock providers for local development.
+
+### LLM Provider
+
+- Set `LLM_API_URL` to an OpenAI-compatible chat completions endpoint.
+- Set `LLM_API_KEY` only in the runtime environment, never in git.
+- Set `LLM_MODEL` to the model name expected by that endpoint.
+- Verify with:
+
+  ```bash
+  npm run test:api-smoke
+  npm run test:learning-quality
+  ```
+
+Review JSON outputs under `local-output/learning-quality/` for simple-English-first explanations, detailed Korean support, nuance, meaning flow, and conservative morphology.
+
+### Supertone/Supertonic TTS
+
+- For a local server, set `SUPERTONE_LOCAL_TTS_URL` to the local endpoint that returns audio bytes.
+- For API mode, set `SUPERTONE_API_KEY` and optionally `SUPERTONE_BASE_URL`.
+- Verify with:
+
+  ```bash
+  npm run test:tts-smoke
+  ```
+
+The response should include `provider`, `audio_url`, and `spoken_words` timing metadata.
+
+### Voice Cloning
+
+- For a local voice server, set `SUPERTONE_LOCAL_VOICE_URL`.
+- For API mode, set `SUPERTONE_API_KEY`.
+- Verify upload/delete through `npm run test:api-smoke`.
+- Confirm the UI consent text is shown and deletion reports success.
+
+### Pronunciation Provider
+
+- Set `PRONUNCIATION_PROVIDER_URL` to an HTTP endpoint that accepts multipart audio and target text.
+- Empty value uses the mock scorer.
+- Verify through `npm run test:api-smoke` and the Pronunciation tab.
+
+### arXiv Real Fetch
+
+- Set `ARXIV_REAL_ENABLED=true` to fetch title/abstract recommendations from arXiv.
+- Verify with:
+
+  ```bash
+  ARXIV_REAL_ENABLED=true npm run test:arxiv-smoke
+  ```
+
+Real arXiv results are cached in memory and remain title/abstract-only.
+
+## Beta Checklist
+
+Use [docs/beta-checklist.md](docs/beta-checklist.md) before inviting students.
 
 ## Implemented MVP Features
 

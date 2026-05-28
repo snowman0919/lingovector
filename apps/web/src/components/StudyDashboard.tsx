@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import {
+  analyzePassage,
   arxivRecommendations,
   deleteVoice,
   inspectWord,
@@ -29,9 +30,29 @@ import {
 } from "@/lib/api";
 import type { ArxivRecommendation, Passage, ProviderDiagnostics, Sentence, TtsResult, VoiceProfile, WordInspect, WritingResult } from "@/lib/types";
 
-type Tab = "audio" | "pronunciation" | "writing" | "arxiv" | "diagnostics";
+type Tab = "audio" | "pronunciation" | "writing" | "arxiv" | "diagnostics" | "review";
 
 const DIAGNOSTICS_VISIBLE = process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_DIAGNOSTICS_ENABLED === "true";
+const DEV_REVIEW_VISIBLE = process.env.NODE_ENV !== "production";
+
+const REVIEW_SAMPLES = [
+  {
+    id: "high-school",
+    title: "Digital Attention",
+    source: "review-high-school",
+    text: "Although digital tools make learning faster, they also make attention more fragile. Students become better thinkers when they slow down, notice the logic of a sentence, and explain an idea in their own English.",
+    word: "fragile",
+    response: "I think that digital tools are very useful, but they can make me to lose focus. In my case, slowing down helps my thinking become clearer because I can see the reason of each sentence.",
+  },
+  {
+    id: "abstract",
+    title: "Robust Feedback for Small Educational Models",
+    source: "review-arxiv-style",
+    text: "Small educational language models can provide responsive writing feedback under privacy constraints. We evaluate whether sentence-level explanations improve revision quality, especially when learners must reason about nuance rather than translate a fixed answer.",
+    word: "constraints",
+    response: "Small models are important thing because students need many informations quickly. However, feedback should not only correct grammar because students must understand nuance and logic.",
+  },
+] as const;
 
 export function StudyDashboard({
   passage,
@@ -50,6 +71,9 @@ export function StudyDashboard({
   const [word, setWord] = useState<WordInspect | null>(null);
   const [tab, setTab] = useState<Tab>("audio");
   const [busy, setBusy] = useState("");
+  const tabs: Tab[] = ["audio", "pronunciation", "writing", "arxiv"];
+  if (DIAGNOSTICS_VISIBLE) tabs.push("diagnostics");
+  if (DEV_REVIEW_VISIBLE) tabs.push("review");
 
   async function chooseWord(token: string) {
     if (!selected) return;
@@ -62,10 +86,20 @@ export function StudyDashboard({
   }
 
   return (
-    <section className="study-grid">
+    <>
+      <section className="dashboard-guide">
+        <div>
+          <b>Study flow</b>
+          <span>Choose a sentence on the left, read the meaning flow in the center, click a word on the right, then practice below.</span>
+        </div>
+        <button className="secondary" onClick={onNewPassage}>
+          <FilePlus2 size={16} /> New passage
+        </button>
+      </section>
+      <section className="study-grid">
       <section className="panel study-panel">
         <div className="panel-head">
-          Original Passage
+          <span>Left · Passage</span>
           <button className="icon-button" title="Analyze a new passage" onClick={onNewPassage}>
             <FilePlus2 size={16} />
           </button>
@@ -95,14 +129,14 @@ export function StudyDashboard({
       </section>
 
       <section className="panel study-panel">
-        <div className="panel-head">Sentence Analysis</div>
+        <div className="panel-head">Center · Sentence Analysis</div>
         <div className="panel-body">
           {selected ? <SentenceAnalysis sentence={selected} /> : null}
         </div>
       </section>
 
       <section className="panel study-panel">
-        <div className="panel-head">Word Panel</div>
+        <div className="panel-head">Right · Word Details</div>
         <div className="panel-body">
           {word ? (
             <WordPanel word={word} busy={busy === "word"} />
@@ -116,7 +150,7 @@ export function StudyDashboard({
         <div className="panel-head">
           Practice
           <div className="bottom-tabs">
-            {(["audio", "pronunciation", "writing", "arxiv", ...(DIAGNOSTICS_VISIBLE ? ["diagnostics"] : [])] as Tab[]).map((item) => (
+            {tabs.map((item) => (
               <button key={item} className={`tab ${tab === item ? "active" : ""}`} onClick={() => setTab(item)}>
                 {item}
               </button>
@@ -129,9 +163,11 @@ export function StudyDashboard({
           {tab === "writing" ? <WritingTutor passage={passage} /> : null}
           {tab === "arxiv" ? <ArxivLearning onPassage={onPassage} /> : null}
           {tab === "diagnostics" && DIAGNOSTICS_VISIBLE ? <ProviderDiagnosticsPanel /> : null}
+          {tab === "review" && DEV_REVIEW_VISIBLE ? <LearningQualityReview /> : null}
         </div>
       </section>
-    </section>
+      </section>
+    </>
   );
 }
 
@@ -222,15 +258,25 @@ function WordPanel({ word, busy }: { word: WordInspect; busy: boolean }) {
 function AudioPractice({ sentence }: { sentence: Sentence }) {
   const [tts, setTts] = useState<TtsResult | null>(null);
   const [activeWord, setActiveWord] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   async function play() {
-    const result = await synthesize(sentence.text);
-    setTts(result);
-    setTimeout(() => audioRef.current?.play(), 50);
-    result.spoken_words.forEach((word) => {
-      window.setTimeout(() => setActiveWord(word.word), word.start_ms);
-    });
+    setBusy(true);
+    setError("");
+    try {
+      const result = await synthesize(sentence.text);
+      setTts(result);
+      setTimeout(() => audioRef.current?.play(), 50);
+      result.spoken_words.forEach((word) => {
+        window.setTimeout(() => setActiveWord(word.word), word.start_ms);
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not play this sentence.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -239,10 +285,11 @@ function AudioPractice({ sentence }: { sentence: Sentence }) {
         <p className="mini-title">Sentence Playback</p>
         <div className="toolbar">
           <button className="primary" onClick={play}>
-            <Volume2 size={17} /> Play sentence
+            <Volume2 size={17} /> {busy ? "Preparing..." : "Play sentence"}
           </button>
-          {tts ? <span>Provider: {tts.provider}</span> : null}
+          {tts?.provider === "mock" && DIAGNOSTICS_VISIBLE ? <span>Demo audio (mock)</span> : null}
         </div>
+        {error ? <div className="error">{error}</div> : null}
         {tts ? <audio ref={audioRef} controls src={mediaUrl(tts.audio_url)} /> : null}
       </div>
       <div>
@@ -266,19 +313,28 @@ function PronunciationPractice({ sentence }: { sentence: Sentence }) {
   const [recording, setRecording] = useState(false);
   const [audio, setAudio] = useState<Blob | null>(null);
   const [score, setScore] = useState<Record<string, unknown> | null>(null);
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
 
   async function start() {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    chunks.current = [];
-    const recorder = new MediaRecorder(stream);
-    mediaRecorder.current = recorder;
-    recorder.ondataavailable = (event) => chunks.current.push(event.data);
-    recorder.onstop = () => {
-      setAudio(new Blob(chunks.current, { type: "audio/webm" }));
-      stream.getTracks().forEach((track) => track.stop());
-    };
-    recorder.start();
-    setRecording(true);
+    setError("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      chunks.current = [];
+      const recorder = new MediaRecorder(stream);
+      mediaRecorder.current = recorder;
+      recorder.ondataavailable = (event) => chunks.current.push(event.data);
+      recorder.onstop = () => {
+        setAudio(new Blob(chunks.current, { type: "audio/webm" }));
+        stream.getTracks().forEach((track) => track.stop());
+        setStatus("Recording ready. Press Score to get feedback.");
+      };
+      recorder.start();
+      setRecording(true);
+      setStatus("Recording...");
+    } catch {
+      setError("Microphone access was blocked. Allow microphone permission, or use the mock scorer without recording.");
+    }
   }
 
   function stop() {
@@ -287,8 +343,16 @@ function PronunciationPractice({ sentence }: { sentence: Sentence }) {
   }
 
   async function submit() {
-    const result = await scorePronunciation(audio, sentence.text, sentence.id);
-    setScore(result.score);
+    setError("");
+    setStatus("Scoring pronunciation...");
+    try {
+      const result = await scorePronunciation(audio, sentence.text, sentence.id);
+      setScore(result.score);
+      setStatus("Pronunciation feedback saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not score pronunciation.");
+      setStatus("");
+    }
   }
 
   return (
@@ -309,9 +373,11 @@ function PronunciationPractice({ sentence }: { sentence: Sentence }) {
             <RefreshCw size={17} /> Score
           </button>
         </div>
+        {status ? <p className="helper-text">{status}</p> : null}
+        {error ? <div className="error">{error}</div> : null}
       </div>
       <div>
-        <p className="mini-title">Pronunciation JSON</p>
+        <p className="mini-title">Pronunciation Feedback</p>
         <pre>{score ? JSON.stringify(score, null, 2) : "No score yet."}</pre>
       </div>
     </div>
@@ -322,14 +388,36 @@ function WritingTutor({ passage }: { passage: Passage }) {
   const [prompt, setPrompt] = useState("");
   const [response, setResponse] = useState("");
   const [result, setResult] = useState<WritingResult | null>(null);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
 
   async function generate() {
-    const generated = await writingPrompt(passage.id);
-    setPrompt(generated.prompt);
+    setBusy("prompt");
+    setError("");
+    try {
+      const generated = await writingPrompt(passage.id);
+      setPrompt(generated.prompt);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not generate a writing prompt.");
+    } finally {
+      setBusy("");
+    }
   }
 
   async function submit() {
-    setResult(await submitWriting(prompt, response, passage.id));
+    if (!prompt.trim() || !response.trim()) {
+      setError("Generate a prompt and write your English response first.");
+      return;
+    }
+    setBusy("submit");
+    setError("");
+    try {
+      setResult(await submitWriting(prompt, response, passage.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not score this writing.");
+    } finally {
+      setBusy("");
+    }
   }
 
   return (
@@ -339,12 +427,13 @@ function WritingTutor({ passage }: { passage: Passage }) {
         <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} />
         <div className="toolbar">
           <button className="secondary" onClick={generate}>
-            <Wand2 size={17} /> Generate
+            <Wand2 size={17} /> {busy === "prompt" ? "Generating..." : "Generate"}
           </button>
           <button className="primary" onClick={submit}>
-            <Send size={17} /> Submit
+            <Send size={17} /> {busy === "submit" ? "Scoring..." : "Submit"}
           </button>
         </div>
+        {error ? <div className="error">{error}</div> : null}
         <div className="field">
           <label htmlFor="writing">Response</label>
           <textarea id="writing" value={response} onChange={(event) => setResponse(event.target.value)} />
@@ -389,27 +478,38 @@ function WritingTutor({ passage }: { passage: Passage }) {
 function ArxivLearning({ onPassage }: { onPassage: (passage: Passage) => void }) {
   const [papers, setPapers] = useState<ArxivRecommendation[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   async function load() {
     setLoading(true);
+    setError("");
     try {
       setPapers(await arxivRecommendations());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load arXiv recommendations.");
     } finally {
       setLoading(false);
     }
   }
 
   async function open(id: string) {
-    onPassage(await openArxiv(id));
+    setError("");
+    try {
+      onPassage(await openArxiv(id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open this abstract.");
+    }
   }
 
   return (
     <div>
       <div className="toolbar">
         <button className="primary" onClick={load}>
-          <RefreshCw size={17} /> Load recommendations
+          <RefreshCw size={17} /> {loading ? "Loading..." : "Load recommendations"}
         </button>
       </div>
+      {error ? <div className="error">{error}</div> : null}
+      {!loading && papers.length === 0 ? <p className="right-panel-empty">Load title-and-abstract recommendations for Security, AI, Robotics, Physics, Chemistry, and Biology.</p> : null}
       <div className={`arxiv-list ${loading ? "loading" : ""}`}>
         {papers.map((paper) => (
           <article className="arxiv-item" key={paper.id}>
@@ -431,22 +531,45 @@ function ArxivLearning({ onPassage }: { onPassage: (passage: Passage) => void })
 
 export function VoiceConsentUploader() {
   const [file, setFile] = useState<File | null>(null);
-  const [consent, setConsent] = useState("I consent to using this voice sample only for my Lingovector study voice profile. I confirm this is my own voice or I have explicit permission to use it, and I will not use cloned voices to impersonate others.");
+  const [consent, setConsent] = useState("I agree to upload only my own voice, or a voice I have explicit permission to use. I understand Lingovector stores this sample and consent metadata for my study voice profile, and I will not use cloned voices to impersonate anyone.");
   const [profile, setProfile] = useState<VoiceProfile | null>(null);
   const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState("");
 
   async function submit() {
-    if (!file) return;
-    const response = await uploadVoice(file, consent, "Student voice");
-    setProfile(response);
-    setStatus(`${response.provider}: ${response.provider_voice_id}`);
+    if (!file) {
+      setError("Choose a voice sample file first.");
+      return;
+    }
+    setBusy("upload");
+    setError("");
+    setStatus("Uploading voice sample...");
+    try {
+      const response = await uploadVoice(file, consent, "Student voice");
+      setProfile(response);
+      setStatus("Voice profile saved. You can delete it here at any time.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not upload this voice sample.");
+      setStatus("");
+    } finally {
+      setBusy("");
+    }
   }
 
   async function remove() {
     if (!profile) return;
-    await deleteVoice(profile.id);
-    setStatus("Voice profile deleted.");
-    setProfile(null);
+    setBusy("delete");
+    setError("");
+    try {
+      await deleteVoice(profile.id);
+      setStatus("Voice profile deleted. The saved profile record was removed and Lingovector attempted to remove the stored audio file.");
+      setProfile(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete this voice profile.");
+    } finally {
+      setBusy("");
+    }
   }
 
   return (
@@ -454,7 +577,7 @@ export function VoiceConsentUploader() {
       <p className="mini-title">Voice Cloning</p>
       <div className="consent-box">
         <Upload size={18} />
-        <span>Voice cloning requires explicit consent. Upload only your own voice or a voice you have explicit permission to use. Cloned voices must not be used to impersonate others; consent text and metadata are stored with the profile.</span>
+        <span>Upload only your own voice, or a voice you have explicit permission to use. Lingovector stores the audio sample, consent text, consent version, and file metadata for this profile. Delete removes the profile record and attempts to remove the stored audio file. Cloned voices must not be used to impersonate anyone.</span>
       </div>
       <div className="field">
         <label htmlFor="voice-file">Voice sample</label>
@@ -465,15 +588,91 @@ export function VoiceConsentUploader() {
         <textarea id="consent" value={consent} onChange={(event) => setConsent(event.target.value)} />
       </div>
       <button className="secondary" onClick={submit}>
-        <Upload size={17} /> Upload voice
+        <Upload size={17} /> {busy === "upload" ? "Uploading..." : "Upload voice"}
       </button>
       {profile ? (
         <button className="danger" onClick={remove}>
-          <Trash2 size={17} /> Delete voice
+          <Trash2 size={17} /> {busy === "delete" ? "Deleting..." : "Delete voice"}
         </button>
       ) : null}
-      {status ? <p>{status}</p> : null}
+      {status ? <p className="helper-text">{status}</p> : null}
+      {error ? <div className="error">{error}</div> : null}
       {profile ? <pre>{JSON.stringify({ consent_version: profile.consent_version, metadata: profile.metadata }, null, 2)}</pre> : null}
+    </div>
+  );
+}
+
+function LearningQualityReview() {
+  const [sampleId, setSampleId] = useState<string>(REVIEW_SAMPLES[0].id);
+  const [result, setResult] = useState<{
+    passage: Passage;
+    word: WordInspect;
+    writing: WritingResult;
+    prompt: string;
+  } | null>(null);
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+  const sample = REVIEW_SAMPLES.find((item) => item.id === sampleId) ?? REVIEW_SAMPLES[0];
+
+  async function run() {
+    setStatus("Running sample through the same study flow...");
+    setError("");
+    setResult(null);
+    try {
+      const passage = await analyzePassage(sample.text, sample.title, sample.source);
+      const word = await inspectWord(sample.word, passage.sentences[0]?.text ?? sample.text);
+      const generatedPrompt = await writingPrompt(passage.id);
+      const writing = await submitWriting(generatedPrompt.prompt, sample.response, passage.id);
+      setResult({ passage, word, writing, prompt: generatedPrompt.prompt });
+      setStatus("Review sample ready.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not run this review sample.");
+      setStatus("");
+    }
+  }
+
+  return (
+    <div>
+      <div className="toolbar">
+        <select className="select" value={sampleId} onChange={(event) => setSampleId(event.target.value)}>
+          {REVIEW_SAMPLES.map((item) => (
+            <option key={item.id} value={item.id}>{item.title}</option>
+          ))}
+        </select>
+        <button className="secondary" onClick={run}>
+          <RefreshCw size={17} /> Run review sample
+        </button>
+      </div>
+      {status ? <p className="helper-text">{status}</p> : null}
+      {error ? <div className="error">{error}</div> : null}
+      {result ? (
+        <div className="review-grid">
+          <section className="analysis-card">
+            <h3>Sentence Analysis</h3>
+            <pre>{JSON.stringify(result.passage.sentences, null, 2)}</pre>
+          </section>
+          <section className="analysis-card">
+            <h3>Word Analysis</h3>
+            <pre>{JSON.stringify(result.word, null, 2)}</pre>
+          </section>
+          <section className="analysis-card">
+            <h3>Writing Feedback</h3>
+            <div className="score-grid">
+              {Object.entries(result.writing.scores).map(([name, value]) => (
+                <div className="score-card" key={name}>
+                  <b>{name}</b> {value}/100
+                </div>
+              ))}
+            </div>
+            <p><b>Prompt:</b> {result.prompt}</p>
+            <p><b>Before:</b> {result.writing.original}</p>
+            <p><b>After:</b> {result.writing.revised}</p>
+            <pre>{JSON.stringify(result.writing.korean_like_translation, null, 2)}</pre>
+          </section>
+        </div>
+      ) : (
+        <p className="right-panel-empty">Local review mode runs committed sample passages through sentence analysis, word analysis, and writing feedback for manual quality checks.</p>
+      )}
     </div>
   );
 }

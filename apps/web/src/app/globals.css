@@ -160,6 +160,30 @@ button {
   font-size: 20px;
 }
 
+.input-intro {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.input-intro p,
+.helper-text,
+.next-action {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.input-intro p,
+.next-action {
+  margin: 0;
+}
+
+.helper-text {
+  margin: 10px 0 0;
+  font-size: 14px;
+}
+
 .field {
   display: grid;
   gap: 8px;
@@ -173,7 +197,8 @@ button {
 }
 
 .field input,
-.field textarea {
+.field textarea,
+.select {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -196,11 +221,38 @@ button {
   align-items: center;
 }
 
+.select {
+  min-height: 38px;
+  max-width: 360px;
+}
+
 .error {
   margin-top: 12px;
   color: var(--red);
   font-weight: 700;
   font-size: 14px;
+}
+
+.dashboard-guide {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.dashboard-guide div {
+  display: grid;
+  gap: 3px;
+}
+
+.dashboard-guide span {
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .study-grid {
@@ -308,7 +360,8 @@ button {
 .structure-list,
 .score-grid,
 .arxiv-list,
-.provider-grid {
+.provider-grid,
+.review-grid {
   display: grid;
   gap: 10px;
 }
@@ -437,6 +490,10 @@ button {
   padding: 1px 3px;
 }
 
+.review-grid pre {
+  max-height: 300px;
+}
+
 .loading {
   opacity: 0.7;
   pointer-events: none;
@@ -445,8 +502,13 @@ button {
 @media (max-width: 1040px) {
   .login-grid,
   .study-grid,
-  .bottom-content {
+  .bottom-content,
+  .dashboard-guide {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-guide {
+    align-items: stretch;
   }
 
   .study-grid {
