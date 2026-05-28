@@ -204,6 +204,10 @@ Real arXiv results are cached in memory and remain title/abstract-only.
 
 Use [docs/beta-checklist.md](docs/beta-checklist.md) before inviting students.
 
+## Deployment Rehearsal
+
+Use [docs/deployment.md](docs/deployment.md) for the Linux server, reverse proxy or Cloudflare Tunnel, Docker rehearsal, migration, logging, storage, and rollback runbook. Use [docs/operations-checklist.md](docs/operations-checklist.md) during each beta deploy window.
+
 ## Implemented MVP Features
 
 - Login with backend-verified Google token path, `email_verified`, and hosted-domain/domain enforcement for `@dimigo.hs.kr`.
@@ -227,6 +231,9 @@ Use [docs/beta-checklist.md](docs/beta-checklist.md) before inviting students.
 ```bash
 npm run format:api
 npm run clippy:api
+npm run migrate:check
+npm run ops:storage
+npm run ops:cleanup-local-output
 npm run test:api
 npm run test:api-smoke
 npm run test:tts-smoke

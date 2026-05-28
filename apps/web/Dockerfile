@@ -1,0 +1,39 @@
+FROM node:22-bookworm-slim AS deps
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/web/package.json apps/web/package.json
+RUN npm ci
+
+FROM node:22-bookworm-slim AS builder
+
+WORKDIR /app
+ARG NEXT_PUBLIC_API_BASE_URL
+ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID
+ARG NEXT_PUBLIC_DIAGNOSTICS_ENABLED=false
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+ENV NEXT_PUBLIC_GOOGLE_CLIENT_ID=$NEXT_PUBLIC_GOOGLE_CLIENT_ID
+ENV NEXT_PUBLIC_DIAGNOSTICS_ENABLED=$NEXT_PUBLIC_DIAGNOSTICS_ENABLED
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json package-lock.json ./
+COPY apps/web apps/web
+
+RUN npm --workspace apps/web run build
+
+FROM node:22-bookworm-slim AS runtime
+
+WORKDIR /app
+ENV NODE_ENV=production
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
+
+RUN useradd --system --create-home --home-dir /app --shell /usr/sbin/nologin nextjs
+
+COPY --from=builder --chown=nextjs:nextjs /app/apps/web/.next/standalone ./
+COPY --from=builder --chown=nextjs:nextjs /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder --chown=nextjs:nextjs /app/apps/web/public ./apps/web/public
+
+EXPOSE 3000
+USER nextjs
+CMD ["node", "apps/web/server.js"]

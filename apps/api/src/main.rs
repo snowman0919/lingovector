@@ -8,7 +8,10 @@ mod storage;
 
 use std::sync::Arc;
 
-use axum::http::{HeaderValue, Method};
+use axum::{
+    body::Body,
+    http::{HeaderName, HeaderValue, Method, Request},
+};
 use config::Config;
 use providers::{
     ArxivProvider, HttpPronunciationProvider, LlmProvider, MockArxivProvider, MockLlmProvider,
@@ -18,7 +21,11 @@ use providers::{
 };
 use sqlx::postgres::PgPoolOptions;
 use storage::LocalStorage;
-use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use tower_http::{
+    cors::CorsLayer,
+    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
+    trace::TraceLayer,
+};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Clone)]
@@ -118,9 +125,26 @@ async fn main() -> anyhow::Result<()> {
         .allow_headers(tower_http::cors::Any)
         .allow_origin(origins);
 
+    let request_id_header = HeaderName::from_static("x-request-id");
+    let trace = TraceLayer::new_for_http().make_span_with(|request: &Request<Body>| {
+        let request_id = request
+            .headers()
+            .get("x-request-id")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("unknown");
+        tracing::info_span!(
+            "http_request",
+            method = %request.method(),
+            path = %request.uri().path(),
+            request_id = %request_id
+        )
+    });
+
     let app = routes::router(state)
         .layer(cors)
-        .layer(TraceLayer::new_for_http());
+        .layer(PropagateRequestIdLayer::new(request_id_header.clone()))
+        .layer(trace)
+        .layer(SetRequestIdLayer::new(request_id_header, MakeRequestUuid));
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
     tracing::info!("Lingovector API listening on {}", config.bind_addr);
     axum::serve(listener, app).await?;

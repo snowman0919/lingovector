@@ -1,0 +1,14 @@
+target/
+node_modules/
+apps/web/.next/
+apps/api/storage/
+storage/
+local-output/
+.env
+.env.*
+!.env.example
+!.env.production.example
+.git/
+.DS_Store
+*.log
+*.tsbuildinfo
