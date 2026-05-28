@@ -27,7 +27,7 @@ Real behavior: API attempts an OpenAI-compatible chat/completion endpoint and fa
 Smoke command:
 
 ```bash
-LINGOVECTOR_API_BASE_URL=https://YOUR_STAGING_API_HOST \
+LINGOVECTOR_API_BASE_URL=https://lingovector.kotori9.run/api \
 LINGOVECTOR_AUTH_TOKEN=PASTE_TOKEN_IN_SHELL_ONLY \
 npm run test:authenticated-smoke
 ```
@@ -99,7 +99,7 @@ npm run test:tts-smoke
 For staging with OAuth:
 
 ```bash
-LINGOVECTOR_API_BASE_URL=https://YOUR_STAGING_API_HOST \
+LINGOVECTOR_API_BASE_URL=https://lingovector.kotori9.run/api \
 LINGOVECTOR_AUTH_TOKEN=PASTE_TOKEN_IN_SHELL_ONLY \
 npm run test:authenticated-smoke
 ```
@@ -163,7 +163,7 @@ Real behavior: sends the uploaded audio and target text to the configured HTTP p
 Smoke command:
 
 ```bash
-LINGOVECTOR_API_BASE_URL=https://YOUR_STAGING_API_HOST \
+LINGOVECTOR_API_BASE_URL=https://lingovector.kotori9.run/api \
 LINGOVECTOR_AUTH_TOKEN=PASTE_TOKEN_IN_SHELL_ONLY \
 npm run test:authenticated-smoke
 ```

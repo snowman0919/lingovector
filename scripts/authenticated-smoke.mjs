@@ -1,3 +1,5 @@
+// Single-domain Cloudflare Tunnel example:
+//   LINGOVECTOR_API_BASE_URL=https://lingovector.kotori9.run/api LINGOVECTOR_AUTH_TOKEN=... npm run test:authenticated-smoke
 const API_BASE = (process.env.LINGOVECTOR_API_BASE_URL ?? process.env.STAGING_API_BASE_URL ?? process.env.API_BASE ?? "http://127.0.0.1:8080").replace(/\/$/, "");
 const TOKEN = process.env.LINGOVECTOR_AUTH_TOKEN;
 

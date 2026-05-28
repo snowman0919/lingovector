@@ -9,15 +9,17 @@ This document describes a production deployment rehearsal for Lingovector. It is
 - PostgreSQL runs as a managed database or a server-local PostgreSQL service/container.
 - Runtime storage stores server-generated TTS/pronunciation audio and uploaded voice samples under `STORAGE_DIR`; local disk is acceptable for a small rehearsal, but object storage should replace local disk before larger use.
 - Browser-side Supertonic ONNX TTS is the preferred beta direction when model assets are deployed; server-side Supertone/Supertonic remains an optional fallback.
-- Cloudflare Tunnel is the recommended public entrypoint. Do not assume inbound public `80` or `443` ports are open. Nginx/Caddy can still be used locally if a future single-domain reverse proxy is added.
+- Cloudflare Tunnel is the recommended public entrypoint. Do not assume inbound public `80` or `443` ports are open. Use one public hostname with path-based API routing.
 
 Student-facing UI is Korean for the Dimigo beta. English passages, English examples, definitions, generated Simple English explanations, paper titles/abstracts, and student-written English remain in English so Lingovector teaches English-first thinking with Korean support instead of translation memorization.
 
 Expected public routes:
 
-- `https://YOUR_BETA_FRONTEND_HOST/` -> Next.js frontend
-- `https://YOUR_BETA_API_HOST/health` -> Axum API health endpoint
-- `https://YOUR_BETA_API_HOST/media/...` -> Axum API media endpoint
+- `https://lingovector.kotori9.run/` -> Next.js frontend
+- `https://lingovector.kotori9.run/api/health` -> Axum API health endpoint
+- `https://lingovector.kotori9.run/api/media/...` -> Axum API media endpoint
+
+Root API routes such as `/health` remain available for internal container healthchecks and backward-compatible local scripts. Public Cloudflare routing should prefer `/api/*`.
 
 Expected internal ports:
 
@@ -80,8 +82,8 @@ Production startup fails fast when required env vars are missing or unsafe. `DEV
    POSTGRES_USER=lingovector
    POSTGRES_PASSWORD=YOUR_LOCAL_REHEARSAL_PASSWORD
    POSTGRES_DB=lingovector
-   NEXT_PUBLIC_API_BASE_URL=https://YOUR_BETA_API_HOST
-   CORS_ORIGINS=https://YOUR_BETA_FRONTEND_HOST
+   NEXT_PUBLIC_API_BASE_URL=/api
+   CORS_ORIGINS=https://lingovector.kotori9.run
    ```
 
 3. Build production images:
@@ -174,11 +176,11 @@ The API propagates `x-request-id` when a proxy supplies it and creates one when 
 Useful checks:
 
 ```bash
-curl -fsS https://YOUR_BETA_API_HOST/health
+curl -fsS https://lingovector.kotori9.run/api/health
 docker compose --env-file .env.production -f docker-compose.production.example.yml logs --tail=200 api
 ```
 
-Diagnostics are disabled in production unless `DIAGNOSTICS_ENABLED=true`. If enabled for a short admin check, call `/diagnostics/providers` from an authenticated admin test account, then disable it again.
+Diagnostics are disabled in production unless `DIAGNOSTICS_ENABLED=true`. If enabled for a short admin check, call `/api/diagnostics/providers` from an authenticated admin test account, then disable it again.
 
 ## Storage and Privacy Operations
 
@@ -212,28 +214,30 @@ This cleanup script is intentionally scoped to `local-output`. Do not use it for
 
 ## Cloudflare Tunnel Default
 
-For the current frontend/API/CORS design, use split public hostnames:
+Use one public hostname with ordered path routing:
 
 ```text
-https://lingovector.example.com      -> web
-https://api.lingovector.example.com  -> api
+https://lingovector.kotori9.run/api/*  -> api
+https://lingovector.kotori9.run/*      -> web
 ```
 
 Set:
 
 ```text
-CORS_ORIGINS=https://lingovector.example.com
-NEXT_PUBLIC_API_BASE_URL=https://api.lingovector.example.com
+CORS_ORIGINS=https://lingovector.kotori9.run
+NEXT_PUBLIC_API_BASE_URL=/api
 ```
 
-HTTPS is required for production Google sign-in and microphone recording. Google OAuth authorized JavaScript origins must include `https://YOUR_BETA_FRONTEND_HOST`. If a redirect-based OAuth flow is later added, register a production redirect URI such as `https://YOUR_BETA_FRONTEND_HOST/auth/callback` and keep the local redirect URI separate.
+HTTPS is required for production Google sign-in and microphone recording. Google OAuth authorized JavaScript origins must include only `https://lingovector.kotori9.run` for production. Authorized redirect URIs can remain empty unless a redirect/callback OAuth flow is later added.
 
-When `cloudflared` runs as a Compose service, configure Cloudflare public hostnames to the internal Docker service URLs:
+When `cloudflared` runs as a Compose service, configure Cloudflare public hostname/path rules to the internal Docker service URLs:
 
 ```text
-lingovector.example.com      -> http://web:3000
-api.lingovector.example.com  -> http://api:8080
+lingovector.kotori9.run /api/*  -> http://api:8080
+lingovector.kotori9.run /*      -> http://web:3000
 ```
+
+The `/api/*` rule must be before the web fallback. Cloudflare Tunnel does not need to strip `/api`; the backend serves all public API routes under `/api`. This avoids a predictable API subdomain, but `/api` is still discoverable and is not a security boundary.
 
 Use [cloudflare-tunnel.md](cloudflare-tunnel.md) for the full Cloudflare Tunnel runbook. Use [linux-server-runbook.md](linux-server-runbook.md) for Linux server operations.
 
@@ -245,11 +249,12 @@ Use [cloudflare-tunnel.md](cloudflare-tunnel.md) for the full Cloudflare Tunnel 
 - [ ] `DEV_AUTH=false`.
 - [ ] Student UI is Korean and English learning materials remain English-first.
 - [ ] Google OAuth client IDs match frontend/backend env.
-- [ ] `CORS_ORIGINS` is the exact HTTPS frontend origin.
+- [ ] `CORS_ORIGINS=https://lingovector.kotori9.run`.
+- [ ] `NEXT_PUBLIC_API_BASE_URL=/api`.
 - [ ] Database backup is complete.
 - [ ] Migration check reviewed.
-- [ ] Cloudflare Tunnel routes HTTPS to `web:3000` and `api:8080`, or systemd `cloudflared` routes to `127.0.0.1:3000` and `127.0.0.1:8080`.
-- [ ] `/health` returns OK.
+- [ ] Cloudflare Tunnel routes `lingovector.kotori9.run /api/*` to `api:8080` before routing the default path to `web:3000`.
+- [ ] `/api/health` returns OK publicly and `/health` returns OK internally.
 - [ ] Manual `@dimigo.hs.kr` login succeeds.
 - [ ] First-login consent gate is reviewed and accepted by the operator test account.
 - [ ] `개인정보 및 계정` can delete voice data and delete a test account.

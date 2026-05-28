@@ -28,7 +28,8 @@ Use this checklist before a small school-internal beta. Do not paste secrets int
 - [ ] `JWT_SECRET` is generated, private, non-default, and at least 32 characters
 - [ ] `GOOGLE_CLIENT_ID` is set to the backend OAuth web client ID
 - [ ] `ALLOWED_EMAIL_DOMAIN=dimigo.hs.kr`
-- [ ] `CORS_ORIGINS` contains only explicit `https://` frontend origins
+- [ ] `CORS_ORIGINS=https://lingovector.kotori9.run`
+- [ ] `NEXT_PUBLIC_API_BASE_URL=/api`
 - [ ] `DIAGNOSTICS_ENABLED=false` unless an admin-only diagnostics check is planned
 - [ ] `NEXT_PUBLIC_DIAGNOSTICS_ENABLED=false` for normal student builds
 - [ ] `NEXT_PUBLIC_TTS_MODE=browser_onnx` is set only when ONNX model/schema files are deployed; otherwise use `server` or `mock` intentionally
@@ -37,7 +38,7 @@ Use this checklist before a small school-internal beta. Do not paste secrets int
 
 - [ ] Google OAuth consent screen is configured for the school beta
 - [ ] Authorized JavaScript origin includes the local origin for local testing
-- [ ] Authorized JavaScript origin includes the production frontend origin
+- [ ] Authorized JavaScript origin includes `https://lingovector.kotori9.run`
 - [ ] A verified `@dimigo.hs.kr` account can sign in
 - [ ] First login shows the Korean required consent gate before dashboard access
 - [ ] Completing all required consent checkboxes activates the app

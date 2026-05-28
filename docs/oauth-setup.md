@@ -16,12 +16,10 @@ Use this checklist for local, staging, and production OAuth setup. Do not commit
    - Name: use a clear name such as `Lingovector Staging Web`.
 4. Add Authorized JavaScript origins:
    - Local: `http://localhost:3000`
-   - Staging through Cloudflare Tunnel: `https://staging.lingovector.example.com`
-   - Production through Cloudflare Tunnel: `https://lingovector.example.com`
-5. If a redirect-based flow is introduced later, add redirect URIs separately:
+   - Staging/production through Cloudflare Tunnel: `https://lingovector.kotori9.run`
+5. Authorized redirect URIs can remain empty for the current app because it uses browser Google Identity Services and server-side ID token verification. If a redirect-based flow is introduced later, add redirect URIs separately:
    - Local: `http://localhost:3000/auth/callback`
-   - Staging: `https://YOUR_STAGING_FRONTEND_HOST/auth/callback`
-   - Production: `https://YOUR_PRODUCTION_FRONTEND_HOST/auth/callback`
+   - Staging/production: `https://lingovector.kotori9.run/auth/callback`
 
 Current Lingovector login uses Google Identity Services in the browser and sends the ID token to the API for verification. `GOOGLE_CLIENT_ID` and `NEXT_PUBLIC_GOOGLE_CLIENT_ID` should be the same web client ID for the target environment.
 
@@ -40,21 +38,14 @@ Frontend build:
 NEXT_PUBLIC_GOOGLE_CLIENT_ID=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com
 ```
 
-Staging and production must also set exact HTTPS CORS origins:
+Staging and production use one public origin and a relative API base:
 
 ```text
-CORS_ORIGINS=https://staging.lingovector.example.com
-NEXT_PUBLIC_API_BASE_URL=https://api-staging.lingovector.example.com
+CORS_ORIGINS=https://lingovector.kotori9.run
+NEXT_PUBLIC_API_BASE_URL=/api
 ```
 
-For production split hostnames:
-
-```text
-CORS_ORIGINS=https://lingovector.example.com
-NEXT_PUBLIC_API_BASE_URL=https://api.lingovector.example.com
-```
-
-Cloudflare terminates HTTPS publicly. The browser still sees the final HTTPS origin, so Google OAuth Authorized JavaScript origins and backend CORS must use those Cloudflare hostnames. Local container traffic behind the tunnel may remain HTTP.
+Cloudflare terminates HTTPS publicly. The browser sees `https://lingovector.kotori9.run`, so Google OAuth Authorized JavaScript origins and backend CORS must use that final public origin. Local container traffic behind the tunnel may remain HTTP.
 
 ## Backend Enforcement
 
@@ -74,12 +65,12 @@ Use this only for staging/operator smoke tests.
 1. Open the staging frontend.
 2. Sign in with a verified `@dimigo.hs.kr` test account.
 3. Open browser developer tools.
-4. Find the API request to `/me` or another authenticated endpoint.
+4. Find the API request to `/api/me` or another authenticated endpoint.
 5. Copy the bearer token from the `Authorization` request header.
 6. Run the smoke script in a local shell:
 
    ```bash
-   LINGOVECTOR_API_BASE_URL=https://YOUR_STAGING_API_HOST \
+   LINGOVECTOR_API_BASE_URL=https://lingovector.kotori9.run/api \
    LINGOVECTOR_AUTH_TOKEN=PASTE_TOKEN_IN_SHELL_ONLY \
    npm run test:authenticated-smoke
    ```
@@ -100,7 +91,7 @@ unset LINGOVECTOR_AUTH_TOKEN
 ### Wrong Origin
 
 - The browser origin must exactly match an Authorized JavaScript origin.
-- Include scheme and host, for example `https://staging.example.edu`.
+- Include scheme and host, for example `https://lingovector.kotori9.run`.
 - Do not use `localhost` for staging/production OAuth.
 - When using Cloudflare Tunnel, use the final public Cloudflare hostname, not the Docker service name or Linux localhost address.
 
@@ -118,7 +109,7 @@ unset LINGOVECTOR_AUTH_TOKEN
 ### Token Accepted by Frontend but Rejected by Backend
 
 - `GOOGLE_CLIENT_ID` mismatch between frontend build and backend env.
-- `NEXT_PUBLIC_API_BASE_URL` points to a different API hostname than the one allowed by CORS.
+- `NEXT_PUBLIC_API_BASE_URL` should be `/api` for the single-domain tunnel deployment; if using an absolute URL, it must match the approved CORS/OAuth design.
 - ID token audience belongs to a different OAuth client.
 - `ALLOWED_EMAIL_DOMAIN` is not `dimigo.hs.kr`.
 - Google did not mark `email_verified=true`.

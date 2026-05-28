@@ -21,6 +21,7 @@ const checks = [
   [study.includes("지문 입력") && study.includes("영작 튜터") && study.includes("논문 추천"), "main UI labels are localized"],
   [consent.includes("개인정보 수집") || consent.includes("베타 이용 전 개인정보 동의"), "Korean consent gate exists"],
   [api.includes("/me/consents") && api.includes("/me/withdraw-consent") && api.includes('"/me"'), "privacy consent and account deletion API clients exist"],
+  [api.includes("replace(/\\\\/$/, \"\")") || api.includes("replace(/\\/$/, \"\")"), "API base URL normalizes trailing slash for /api deployments"],
   [study.includes("개인정보 및 계정") && study.includes("개인정보 제공 동의 철회") && study.includes("계정 삭제"), "privacy settings UI exists"],
   [tts.includes("NEXT_PUBLIC_TTS_MODE") && tts.includes("onnxruntime-web") && tts.includes("Supertonic ONNX model schema is not configured"), "browser ONNX TTS adapter and fallback exist"],
 ];

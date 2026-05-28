@@ -22,14 +22,14 @@ Services:
 - `postgres`: PostgreSQL on container port `5432`, never public.
 - `cloudflared`: outbound tunnel connector.
 
-Recommended public hostnames:
+Recommended public hostname:
 
-- Web: `https://lingovector.example.com`
-- API: `https://api.lingovector.example.com`
+- Web: `https://lingovector.kotori9.run/`
+- API: `https://lingovector.kotori9.run/api/`
 
-This split-host design matches the current app best because the frontend uses `NEXT_PUBLIC_API_BASE_URL` as a complete browser-visible API origin and the API validates `CORS_ORIGINS` against the web origin.
+Lingovector now prefers single-domain, path-based API routing. The API subdomain is no longer the default. This keeps Google OAuth and browser CORS to one public origin. Cloudflare Tunnel path routing does not need to strip `/api` because the Axum backend serves the same API route tree under `/api`.
 
-Single-domain routing, such as `https://lingovector.example.com/api`, is not the default. Cloudflare hostname/path routing does not rewrite `/api` away for the backend. Use single-domain routing only if you add a reverse proxy that rewrites `/api/*` to the Axum API routes.
+The `/api` path is not a security boundary. The API is still discoverable by path. Real security depends on Google OAuth, backend auth checks, safe CORS, diagnostics disabled by default, `DEV_AUTH=false`, and never exposing secrets.
 
 ## Option A: cloudflared as Compose Service
 
@@ -37,12 +37,14 @@ This is the recommended default because `cloudflared` can reach `web` and `api` 
 
 1. Create the tunnel in Cloudflare Zero Trust.
 2. Store the tunnel token in a shell environment variable or server secret manager, never in git.
-3. Configure public hostnames in Cloudflare:
+3. Configure ordered public hostname/path rules in Cloudflare:
 
    ```text
-   lingovector.example.com      -> http://web:3000
-   api.lingovector.example.com  -> http://api:8080
+   lingovector.kotori9.run /api/*  -> http://api:8080
+   lingovector.kotori9.run /*      -> http://web:3000
    ```
+
+   The `/api/*` rule must come before the web fallback rule.
 
 4. Start Compose with the tunnel overlay:
 
@@ -83,10 +85,11 @@ Use this if the operator prefers OS-managed `cloudflared`, or if the Cloudflare 
    credentials-file: /etc/cloudflared/YOUR_TUNNEL_ID.json
 
    ingress:
-     - hostname: lingovector.example.com
-       service: http://127.0.0.1:3000
-     - hostname: api.lingovector.example.com
+     - hostname: lingovector.kotori9.run
+       path: /api/*
        service: http://127.0.0.1:8080
+     - hostname: lingovector.kotori9.run
+       service: http://127.0.0.1:3000
      - service: http_status:404
    ```
 
@@ -101,20 +104,21 @@ High-level Zero Trust steps:
 1. Open Cloudflare Zero Trust.
 2. Create a tunnel for the Linux server.
 3. Install/run the connector using either the Compose token or systemd setup.
-4. Add public hostnames:
-   - Web hostname -> `http://web:3000` for Compose service mode, or `http://127.0.0.1:3000` for systemd mode.
-   - API hostname -> `http://api:8080` for Compose service mode, or `http://127.0.0.1:8080` for systemd mode.
-5. Confirm Cloudflare DNS is managed for the selected hostnames.
+4. Add public hostname/path rules:
+   - `lingovector.kotori9.run` with path `/api/*` -> `http://api:8080` for Compose service mode, or `http://127.0.0.1:8080` for systemd mode.
+   - `lingovector.kotori9.run` default/fallback path -> `http://web:3000` for Compose service mode, or `http://127.0.0.1:3000` for systemd mode.
+5. Confirm the `/api/*` rule is ordered before the web fallback rule.
+6. Confirm Cloudflare DNS is managed for `lingovector.kotori9.run`.
 
 HTTPS is terminated at Cloudflare. Local traffic from `cloudflared` to containers may be HTTP inside the Docker network or localhost.
 
 ## Env Values
 
-For split hostnames:
+For the single public hostname:
 
 ```text
-CORS_ORIGINS=https://lingovector.example.com
-NEXT_PUBLIC_API_BASE_URL=https://api.lingovector.example.com
+CORS_ORIGINS=https://lingovector.kotori9.run
+NEXT_PUBLIC_API_BASE_URL=/api
 ```
 
 OAuth:
@@ -124,7 +128,13 @@ GOOGLE_CLIENT_ID=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com
 NEXT_PUBLIC_GOOGLE_CLIENT_ID=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com
 ```
 
-Google OAuth Authorized JavaScript origins must include the final HTTPS web origin, for example `https://lingovector.example.com`.
+Google OAuth Authorized JavaScript origins must include only the final HTTPS web origin:
+
+```text
+https://lingovector.kotori9.run
+```
+
+Authorized redirect URIs can remain empty unless the app changes to a redirect/callback OAuth flow.
 
 ## Security Notes
 
@@ -149,5 +159,7 @@ docker compose --env-file .env.production \
   -f docker-compose.production.example.yml \
   -f docker-compose.cloudflare.example.yml logs --tail=100 cloudflared
 
-curl -fsS https://api.lingovector.example.com/health
+curl -fsS https://lingovector.kotori9.run/api/health
+
+STAGING_API_BASE_URL=https://lingovector.kotori9.run/api npm run test:staging-smoke
 ```

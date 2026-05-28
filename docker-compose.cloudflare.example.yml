@@ -6,10 +6,13 @@
 #     -f docker-compose.production.example.yml \
 #     -f docker-compose.cloudflare.example.yml up -d
 #
-# Do not commit real tunnel tokens. Configure public hostnames in Cloudflare
-# Zero Trust to route:
-#   https://lingovector.example.com      -> http://web:3000
-#   https://api.lingovector.example.com  -> http://api:8080
+# Do not commit real tunnel tokens. Configure a single public hostname in
+# Cloudflare Zero Trust with ordered path routing:
+#   https://lingovector.kotori9.run/api/*  -> http://api:8080
+#   https://lingovector.kotori9.run/*      -> http://web:3000
+#
+# The /api/* rule must be listed before the web fallback rule. Cloudflare Tunnel
+# does not need to strip /api because the Axum backend serves routes under /api.
 
 services:
   cloudflared:

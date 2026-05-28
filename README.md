@@ -102,8 +102,8 @@ On first login, users must accept the current Korean beta privacy consent sectio
 - `LLM_MODEL`: model name sent to the OpenAI-compatible endpoint.
 - `PRONUNCIATION_PROVIDER_URL`: optional local pronunciation scoring endpoint returning JSON.
 - `ARXIV_REAL_ENABLED`: when `true`, fetches title/abstract recommendations from the arXiv API with in-memory cache.
-- `DIAGNOSTICS_ENABLED`: enables `/diagnostics/providers` outside development/test. The endpoint never returns secrets.
-- `NEXT_PUBLIC_API_BASE_URL`: frontend API URL.
+- `DIAGNOSTICS_ENABLED`: enables `/api/diagnostics/providers` outside development/test. The endpoint never returns secrets.
+- `NEXT_PUBLIC_API_BASE_URL`: frontend API base. Use `/api` for the single-domain Cloudflare deployment, or an absolute API origin for split-host/dev deployments.
 - `NEXT_PUBLIC_GOOGLE_CLIENT_ID`: enables the Google Identity Services button.
 - `NEXT_PUBLIC_DIAGNOSTICS_ENABLED`: shows the dev provider status tab in production builds only when explicitly `true`. Development builds show it automatically.
 
@@ -116,7 +116,7 @@ Production startup fails fast when required beta settings are missing or unsafe:
 - `DEV_AUTH=true` is rejected.
 - `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `ALLOWED_EMAIL_DOMAIN`, and `CORS_ORIGINS` are required.
 - `JWT_SECRET=dev-only-change-me`, short JWT secrets, wildcard CORS, localhost CORS, and non-HTTPS production CORS origins are rejected.
-- `/diagnostics/providers` is disabled in production unless `DIAGNOSTICS_ENABLED=true`.
+- `/api/diagnostics/providers` is disabled in production unless `DIAGNOSTICS_ENABLED=true`.
 - The frontend diagnostics panel is hidden in production unless `NEXT_PUBLIC_DIAGNOSTICS_ENABLED=true`.
 - Required privacy consent is enforced before protected learning routes.
 - Users can delete voice data, withdraw required consent, or delete their account from `개인정보 및 계정`.
@@ -137,18 +137,20 @@ Mock providers remain visible in developer diagnostics and smoke scripts. The st
 5. Add production authorized JavaScript origin:
 
    ```text
-   https://YOUR_BETA_FRONTEND_HOST
+   https://lingovector.kotori9.run
    ```
 
-6. If your deployment flow uses redirect URIs, add placeholders matching your hosting setup:
+6. Authorized redirect URIs can remain empty because the current Google Identity Services flow does not use a redirect/callback route. If a redirect-based OAuth flow is later added, register explicit callback URIs.
+
+7. Set single-domain production routing values:
 
    ```text
-   http://localhost:3000
-   https://YOUR_BETA_FRONTEND_HOST
+   CORS_ORIGINS=https://lingovector.kotori9.run
+   NEXT_PUBLIC_API_BASE_URL=/api
    ```
 
-7. Set `GOOGLE_CLIENT_ID` on the backend and `NEXT_PUBLIC_GOOGLE_CLIENT_ID` on the frontend to the OAuth web client ID.
-8. Verify login manually:
+8. Set `GOOGLE_CLIENT_ID` on the backend and `NEXT_PUBLIC_GOOGLE_CLIENT_ID` on the frontend to the OAuth web client ID.
+9. Verify login manually:
 
 - A verified `student@dimigo.hs.kr` account can sign in.
 - A non-`@dimigo.hs.kr` account is rejected.
@@ -223,6 +225,15 @@ Use [docs/beta-checklist.md](docs/beta-checklist.md) before inviting students.
 
 ## Deployment Rehearsal
 
+The preferred public deployment is a single Cloudflare Tunnel hostname:
+
+```text
+https://lingovector.kotori9.run/      -> web
+https://lingovector.kotori9.run/api/  -> API
+```
+
+This avoids a separate predictable API subdomain and keeps OAuth/CORS on one origin. It is not a security boundary; auth, safe CORS, disabled diagnostics, `DEV_AUTH=false`, and secret handling still matter.
+
 Use [docs/linux-server-runbook.md](docs/linux-server-runbook.md) and [docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md) for the Linux server plus Cloudflare Tunnel path. Use [docs/staging-runbook.md](docs/staging-runbook.md) for production-like staging rehearsal. Use [docs/oauth-setup.md](docs/oauth-setup.md) and [docs/provider-onboarding.md](docs/provider-onboarding.md) for real OAuth/provider setup. Use [docs/beta-operator-handoff.md](docs/beta-operator-handoff.md) for the human handoff checklist. Use [docs/deployment.md](docs/deployment.md) for the deployment rehearsal runbook. Use [docs/operations-checklist.md](docs/operations-checklist.md) during each beta deploy window.
 
 Review [docs/privacy-consent-draft.md](docs/privacy-consent-draft.md) before beta. It is an operator-review-required draft, not legal advice.
@@ -233,7 +244,8 @@ Review [docs/privacy-consent-draft.md](docs/privacy-consent-draft.md) before bet
 - Explicit `DEV_AUTH=true` development login.
 - Protected API routes using signed backend JWTs.
 - Health endpoint with database readiness at `/health`.
-- Authenticated provider diagnostics at `/diagnostics/providers`, hidden in production unless `DIAGNOSTICS_ENABLED=true`.
+- Public API route aliases under `/api`, including `/api/health`; root routes remain available for local compatibility and container healthchecks.
+- Authenticated provider diagnostics at `/api/diagnostics/providers`, hidden in production unless `DIAGNOSTICS_ENABLED=true`.
 - Passage input as the authenticated landing workflow.
 - Sentence splitting and strict JSON-schema LLM provider path with safe mock fallback.
 - Separate POS and sentence-structure visualizations.

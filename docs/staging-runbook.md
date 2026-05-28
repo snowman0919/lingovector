@@ -9,10 +9,8 @@ Do not use real student data in staging unless a teacher/admin has explicitly ap
 - Docker Desktop or Docker Engine with Compose v2.
 - Node.js 22+ and npm for smoke scripts.
 - Rust stable only if running local non-Docker checks.
-- Access to a staging hostname or tunnel, for example:
-  - Frontend: `https://staging.lingovector.example.com`
-  - API: `https://api-staging.lingovector.example.com`
-- Google OAuth web client configured for the staging frontend origin.
+- Access to the staging/beta Cloudflare Tunnel hostname: `https://lingovector.kotori9.run`.
+- Google OAuth web client configured for `https://lingovector.kotori9.run`.
 - A staging PostgreSQL database or the compose-provided PostgreSQL service.
 - No production secrets copied casually into staging.
 
@@ -33,10 +31,10 @@ DATABASE_URL=postgres://lingovector_staging:STAGING_PASSWORD@postgres:5432/lingo
 JWT_SECRET=STAGING_ONLY_LONG_RANDOM_VALUE_AT_LEAST_32_CHARS
 GOOGLE_CLIENT_ID=YOUR_STAGING_GOOGLE_CLIENT_ID
 ALLOWED_EMAIL_DOMAIN=dimigo.hs.kr
-CORS_ORIGINS=https://YOUR_STAGING_FRONTEND_HOST
+CORS_ORIGINS=https://lingovector.kotori9.run
 STORAGE_DIR=/app/storage
 DIAGNOSTICS_ENABLED=false
-NEXT_PUBLIC_API_BASE_URL=https://YOUR_STAGING_API_HOST
+NEXT_PUBLIC_API_BASE_URL=/api
 NEXT_PUBLIC_GOOGLE_CLIENT_ID=YOUR_STAGING_GOOGLE_CLIENT_ID
 NEXT_PUBLIC_DIAGNOSTICS_ENABLED=false
 POSTGRES_USER=lingovector_staging
@@ -58,10 +56,10 @@ export COMPOSE_PROJECT_NAME=lingovector-staging
 
 In Google Cloud Console, configure the staging OAuth web client:
 
-- Authorized JavaScript origin: `https://YOUR_STAGING_FRONTEND_HOST`
+- Authorized JavaScript origin: `https://lingovector.kotori9.run`
 - Backend `GOOGLE_CLIENT_ID`: same staging web client ID.
 - Frontend `NEXT_PUBLIC_GOOGLE_CLIENT_ID`: same staging web client ID.
-- If a redirect-based OAuth flow is later added, use a staging redirect URI such as `https://YOUR_STAGING_FRONTEND_HOST/auth/callback`.
+- Authorized redirect URIs can remain empty unless a redirect/callback OAuth flow is later added.
 
 The `@dimigo.hs.kr` restriction must still apply in staging. Verify that a non-school Google account is rejected.
 
@@ -75,21 +73,21 @@ export LINGOVECTOR_ENV_FILE=.env.staging
 export CLOUDFLARE_TUNNEL_TOKEN=PASTE_TOKEN_IN_SHELL_ONLY
 ```
 
-In Cloudflare Zero Trust, route public hostnames to internal Docker services:
+In Cloudflare Zero Trust, route one public hostname to internal Docker services with ordered path rules:
 
 ```text
-staging.lingovector.example.com      -> http://web:3000
-api-staging.lingovector.example.com  -> http://api:8080
+lingovector.kotori9.run /api/*  -> http://api:8080
+lingovector.kotori9.run /*      -> http://web:3000
 ```
 
 Then use:
 
 ```text
-CORS_ORIGINS=https://staging.lingovector.example.com
-NEXT_PUBLIC_API_BASE_URL=https://api-staging.lingovector.example.com
+CORS_ORIGINS=https://lingovector.kotori9.run
+NEXT_PUBLIC_API_BASE_URL=/api
 ```
 
-Do not publish Postgres. Do not commit the tunnel token.
+The `/api/*` rule must be before the web fallback. Cloudflare Tunnel does not need to strip `/api`; the backend serves `/api/*` directly. Do not publish Postgres. Do not commit the tunnel token.
 
 ## Build
 
@@ -107,7 +105,7 @@ To build individual images:
 docker build -f apps/api/Dockerfile -t lingovector-api:staging-rehearsal .
 docker build \
   -f apps/web/Dockerfile \
-  --build-arg NEXT_PUBLIC_API_BASE_URL=https://YOUR_STAGING_API_HOST \
+  --build-arg NEXT_PUBLIC_API_BASE_URL=/api \
   --build-arg NEXT_PUBLIC_GOOGLE_CLIENT_ID=YOUR_STAGING_GOOGLE_CLIENT_ID \
   --build-arg NEXT_PUBLIC_DIAGNOSTICS_ENABLED=false \
   -t lingovector-web:staging-rehearsal .
@@ -140,10 +138,10 @@ From the host:
 curl -fsS http://127.0.0.1:8080/health
 ```
 
-Through the staging API hostname or tunnel:
+Through the staging public hostname or tunnel:
 
 ```bash
-curl -fsS https://api-staging.lingovector.example.com/health
+curl -fsS https://lingovector.kotori9.run/api/health
 ```
 
 Expected response includes `"ok": true` and `"database": {"ready": true}`.
@@ -167,7 +165,7 @@ Production-like staging uses Google OAuth, so dev-token scripts are not expected
 Unauthenticated staging checks:
 
 ```bash
-STAGING_API_BASE_URL=https://api-staging.lingovector.example.com npm run test:staging-smoke
+STAGING_API_BASE_URL=https://lingovector.kotori9.run/api npm run test:staging-smoke
 ```
 
 Authenticated staging checks:
@@ -177,7 +175,7 @@ Authenticated staging checks:
 3. Run:
 
    ```bash
-   STAGING_API_BASE_URL=https://YOUR_STAGING_API_HOST \
+   STAGING_API_BASE_URL=https://lingovector.kotori9.run/api \
    STAGING_AUTH_TOKEN=PASTE_TOKEN_IN_SHELL_ONLY \
    npm run test:staging-smoke
    ```
@@ -187,7 +185,7 @@ The script does not print the token. It checks `/health`, protected-route reject
 For a deeper authenticated check that also covers word inspection, pronunciation scoring, writing tutor, and arXiv open:
 
 ```bash
-LINGOVECTOR_API_BASE_URL=https://YOUR_STAGING_API_HOST \
+LINGOVECTOR_API_BASE_URL=https://lingovector.kotori9.run/api \
 LINGOVECTOR_AUTH_TOKEN=PASTE_TOKEN_IN_SHELL_ONLY \
 npm run test:authenticated-smoke
 ```

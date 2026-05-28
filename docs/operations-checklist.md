@@ -20,8 +20,8 @@ Use this for staging rehearsal and every beta deploy window. Do not deploy from 
 - [ ] `JWT_SECRET` is non-default and at least 32 characters
 - [ ] `GOOGLE_CLIENT_ID` is set
 - [ ] `ALLOWED_EMAIL_DOMAIN=dimigo.hs.kr`
-- [ ] `CORS_ORIGINS` is exact HTTPS frontend origin only
-- [ ] `NEXT_PUBLIC_API_BASE_URL` is the public HTTPS API origin
+- [ ] `CORS_ORIGINS=https://lingovector.kotori9.run`
+- [ ] `NEXT_PUBLIC_API_BASE_URL=/api`
 - [ ] `NEXT_PUBLIC_GOOGLE_CLIENT_ID` matches the web OAuth client
 - [ ] `DIAGNOSTICS_ENABLED=false` unless a short admin check is scheduled
 - [ ] `NEXT_PUBLIC_DIAGNOSTICS_ENABLED=false` for normal student builds
@@ -30,7 +30,7 @@ Use this for staging rehearsal and every beta deploy window. Do not deploy from 
 
 ## OAuth Check
 
-- [ ] Google Cloud OAuth client has the production frontend origin
+- [ ] Google Cloud OAuth client has Authorized JavaScript origin `https://lingovector.kotori9.run`
 - [ ] Local test origin remains available for staging if needed
 - [ ] Verified `@dimigo.hs.kr` login succeeds
 - [ ] Non-school account is rejected
@@ -57,18 +57,18 @@ Use this for staging rehearsal and every beta deploy window. Do not deploy from 
 ## Healthcheck
 
 - [ ] Start API
-- [ ] `curl -fsS https://YOUR_BETA_API_HOST/health`
+- [ ] `curl -fsS https://lingovector.kotori9.run/api/health`
 - [ ] Confirm response includes `"ok": true`
 - [ ] Start frontend
-- [ ] Open `https://YOUR_BETA_FRONTEND_HOST`
-- [ ] Confirm Cloudflare Tunnel is using HTTPS public hostnames and routing web/API to internal services
+- [ ] Open `https://lingovector.kotori9.run`
+- [ ] Confirm Cloudflare Tunnel routes `lingovector.kotori9.run /api/*` to the API before the web fallback route
 - [ ] Confirm Postgres is not publicly reachable
 
 ## Smoke Tests
 
-- [ ] Staging smoke without token: `STAGING_API_BASE_URL=https://YOUR_STAGING_API_HOST npm run test:staging-smoke`
-- [ ] Staging smoke with short-lived operator token when available: `STAGING_API_BASE_URL=... STAGING_AUTH_TOKEN=... npm run test:staging-smoke`
-- [ ] Full authenticated smoke with operator token: `LINGOVECTOR_API_BASE_URL=... LINGOVECTOR_AUTH_TOKEN=... npm run test:authenticated-smoke`
+- [ ] Staging smoke without token: `STAGING_API_BASE_URL=https://lingovector.kotori9.run/api npm run test:staging-smoke`
+- [ ] Staging smoke with short-lived operator token when available: `STAGING_API_BASE_URL=https://lingovector.kotori9.run/api STAGING_AUTH_TOKEN=... npm run test:staging-smoke`
+- [ ] Full authenticated smoke with operator token: `LINGOVECTOR_API_BASE_URL=https://lingovector.kotori9.run/api LINGOVECTOR_AUTH_TOKEN=... npm run test:authenticated-smoke`
 - [ ] Provider preflight without network calls: `PREFLIGHT_ENV_FILE=.env.staging npm run test:provider-preflight`
 - [ ] Local development dev-token smoke only when running a separate dev API with `DEV_AUTH=true`: `npm run test:api-smoke`
 - [ ] TTS smoke: `npm run test:tts-smoke`

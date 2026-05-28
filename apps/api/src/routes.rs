@@ -38,7 +38,7 @@ const CONSENT_VOICE: &str = "voice_data_cloning";
 const CONSENT_SENSITIVE: &str = "learning_voice_sensitive_data";
 
 pub fn router(state: AppState) -> Router {
-    Router::new()
+    let api_routes = Router::new()
         .route("/health", get(health))
         .route("/diagnostics/providers", get(provider_diagnostics))
         .route("/auth/google", post(login))
@@ -61,7 +61,11 @@ pub fn router(state: AppState) -> Router {
         .route("/writing/submit", post(submit_writing))
         .route("/arxiv/recommendations", get(arxiv_recommendations))
         .route("/arxiv/open", post(open_arxiv))
-        .route("/media/*path", get(media))
+        .route("/media/*path", get(media));
+
+    Router::new()
+        .merge(api_routes.clone())
+        .nest("/api", api_routes)
         .with_state(state)
 }
 

@@ -1,5 +1,5 @@
 // For Cloudflare Tunnel staging, use:
-//   STAGING_API_BASE_URL=https://api-staging.example.com npm run test:staging-smoke
+//   STAGING_API_BASE_URL=https://lingovector.kotori9.run/api npm run test:staging-smoke
 const API_BASE = (process.env.STAGING_API_BASE_URL ?? process.env.LINGOVECTOR_API_BASE_URL ?? process.env.API_BASE ?? "http://127.0.0.1:8080").replace(/\/$/, "");
 const TOKEN = process.env.STAGING_AUTH_TOKEN ?? process.env.LINGOVECTOR_AUTH_TOKEN;
 

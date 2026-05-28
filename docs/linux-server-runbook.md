@@ -69,8 +69,8 @@ Fill values outside git:
 - `JWT_SECRET`
 - `GOOGLE_CLIENT_ID`
 - `ALLOWED_EMAIL_DOMAIN=dimigo.hs.kr`
-- `CORS_ORIGINS=https://lingovector.example.com`
-- `NEXT_PUBLIC_API_BASE_URL=https://api.lingovector.example.com`
+- `CORS_ORIGINS=https://lingovector.kotori9.run`
+- `NEXT_PUBLIC_API_BASE_URL=/api`
 - `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
 - provider env vars only after approval
 - `CLOUDFLARE_TUNNEL_TOKEN` only as a shell environment variable or protected secret source, not in `.env.staging` or `.env.production`
@@ -108,16 +108,17 @@ docker compose --env-file .env.production \
 Recommended: Compose-managed `cloudflared`.
 
 1. In Cloudflare Zero Trust, create a tunnel.
-2. Add public hostnames:
-   - `lingovector.example.com` -> `http://web:3000`
-   - `api.lingovector.example.com` -> `http://api:8080`
+2. Add ordered public hostname/path rules:
+   - `lingovector.kotori9.run` path `/api/*` -> `http://api:8080`
+   - `lingovector.kotori9.run` default path -> `http://web:3000`
+   The `/api/*` rule must come first.
 3. Put the token in the server shell/session or protected environment file:
 
    ```bash
    export CLOUDFLARE_TUNNEL_TOKEN=PASTE_TOKEN_IN_SHELL_ONLY
    ```
 
-Alternative: install `cloudflared` as a systemd service and route to `http://127.0.0.1:3000` and `http://127.0.0.1:8080`.
+Alternative: install `cloudflared` as a systemd service and route `lingovector.kotori9.run /api/*` to `http://127.0.0.1:8080`, then the default route to `http://127.0.0.1:3000`.
 
 ## Start
 
@@ -158,7 +159,7 @@ curl -fsS http://127.0.0.1:8080/health
 Cloudflare Tunnel API health:
 
 ```bash
-curl -fsS https://api.lingovector.example.com/health
+curl -fsS https://lingovector.kotori9.run/api/health
 ```
 
 Expected: `"ok": true` and `"database": {"ready": true}`.
@@ -243,7 +244,7 @@ Do not run `down --volumes` unless the staging owner confirms all staging DB/sto
 6. Run smoke:
 
    ```bash
-   STAGING_API_BASE_URL=https://api-staging.example.com npm run test:staging-smoke
+   STAGING_API_BASE_URL=https://lingovector.kotori9.run/api npm run test:staging-smoke
    ```
 
 ## Rollback
@@ -268,7 +269,7 @@ Do not run `down --volumes` unless the staging owner confirms all staging DB/sto
 - Do not put the tunnel token in `.env.staging` or `.env.production`; those files are passed to app containers.
 - `DEV_AUTH=false` in staging and production.
 - `DIAGNOSTICS_ENABLED=false` in production except for short authenticated checks.
-- Use final HTTPS web/API origins for OAuth, CORS, and frontend API configuration.
+- Use `https://lingovector.kotori9.run` for OAuth/CORS and `/api` for frontend API configuration.
 - Keep `STORAGE_DIR` persistent for voice/audio files, and back it up only according to the approved privacy policy.
 - Browser ONNX TTS model files must be deployed outside git if `NEXT_PUBLIC_TTS_MODE=browser_onnx`.
 - Verify the first-login consent gate, voice data deletion, and account deletion with a staging/test account before allowing real student voice uploads.

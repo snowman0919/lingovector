@@ -14,16 +14,16 @@ Use this checklist when handing Lingovector to the staging/beta operator.
 ## Start Staging
 
 - [ ] `export COMPOSE_PROJECT_NAME=lingovector-staging`
-- [ ] Configure Cloudflare Tunnel public hostnames: web -> `http://web:3000`, API -> `http://api:8080`
+- [ ] Configure Cloudflare Tunnel single hostname rules: `lingovector.kotori9.run /api/*` -> `http://api:8080`, then default path -> `http://web:3000`
 - [ ] Set `CLOUDFLARE_TUNNEL_TOKEN` outside git
 - [ ] Build: `docker compose --env-file .env.staging -f docker-compose.production.example.yml build`
 - [ ] Start: `LINGOVECTOR_ENV_FILE=.env.staging docker compose --env-file .env.staging -f docker-compose.production.example.yml -f docker-compose.cloudflare.example.yml up -d`
-- [ ] Health: `curl -fsS https://YOUR_STAGING_API_HOST/health`
+- [ ] Health: `curl -fsS https://lingovector.kotori9.run/api/health`
 - [ ] Logs: inspect API/web logs for errors and confirm no secrets are printed.
 
 ## OAuth
 
-- [ ] Configure Google OAuth Authorized JavaScript origin for staging.
+- [ ] Configure Google OAuth Authorized JavaScript origin: `https://lingovector.kotori9.run`.
 - [ ] Set backend `GOOGLE_CLIENT_ID`.
 - [ ] Set frontend `NEXT_PUBLIC_GOOGLE_CLIENT_ID` and rebuild web image.
 - [ ] Sign in with a verified `@dimigo.hs.kr` account.
@@ -35,7 +35,7 @@ Use this checklist when handing Lingovector to the staging/beta operator.
 - [ ] Unauthenticated smoke:
 
   ```bash
-  STAGING_API_BASE_URL=https://YOUR_STAGING_API_HOST npm run test:staging-smoke
+  STAGING_API_BASE_URL=https://lingovector.kotori9.run/api npm run test:staging-smoke
   ```
 
 - [ ] Capture a short-lived token from the signed-in browser session.
@@ -43,7 +43,7 @@ Use this checklist when handing Lingovector to the staging/beta operator.
 - [ ] Authenticated smoke:
 
   ```bash
-  LINGOVECTOR_API_BASE_URL=https://YOUR_STAGING_API_HOST \
+  LINGOVECTOR_API_BASE_URL=https://lingovector.kotori9.run/api \
   LINGOVECTOR_AUTH_TOKEN=PASTE_TOKEN_IN_SHELL_ONLY \
   npm run test:authenticated-smoke
   ```
