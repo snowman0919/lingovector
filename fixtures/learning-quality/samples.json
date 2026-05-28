@@ -1,0 +1,45 @@
+{
+  "passages": [
+    {
+      "id": "high_school_passage",
+      "title": "Digital Attention",
+      "source": "fixture-high-school",
+      "text": "Although digital tools make learning faster, they also make attention more fragile. Students become better thinkers when they slow down, notice the logic of a sentence, and explain an idea in their own English.",
+      "word": "fragile",
+      "student_response": "I think that digital tools are very useful, but they can make me to lose focus. In my case, slowing down helps my thinking become clearer because I can see the reason of each sentence."
+    },
+    {
+      "id": "arxiv_style_abstract",
+      "title": "Robust Feedback for Small Educational Models",
+      "source": "fixture-arxiv-style",
+      "text": "Small educational language models can provide responsive writing feedback under privacy constraints. We evaluate whether sentence-level explanations improve revision quality, especially when learners must reason about nuance rather than translate a fixed answer.",
+      "word": "constraints",
+      "student_response": "Small models are important thing because students need many informations quickly. However, feedback should not only correct grammar because students must understand nuance and logic."
+    },
+    {
+      "id": "student_paragraph",
+      "title": "Student Paragraph",
+      "source": "fixture-student-writing",
+      "text": "I think that reading English articles is helpful, but sometimes I feel burden when I meet abstract words. If a tutor shows the sentence flow first, I can express my view more naturally.",
+      "word": "abstract",
+      "student_response": "Reading articles gives me new ideas, but I often translate Korean sentence directly. A better method is to follow the claim first and then choose English words that match the idea."
+    }
+  ],
+  "student_writings": [
+    {
+      "id": "translated_pattern_focus",
+      "prompt": "Explain how students can move from translation to English-first thinking.",
+      "response": "I think that English study is very important thing because it gives many informations. In my case, when I translate Korean sentence first, my English becomes awkward and the logic is weak."
+    },
+    {
+      "id": "nuance_focus",
+      "prompt": "Argue whether AI feedback should correct every sentence or guide revision.",
+      "response": "AI feedback should guide revision because students need to understand why one word feels stronger than another. Direct correction is fast, but it can hide the thinking process."
+    },
+    {
+      "id": "science_abstract_focus",
+      "prompt": "Explain why title and abstract reading is useful for high school science learning.",
+      "response": "Title and abstract reading is useful because students can see the research problem before the details. It helps them predict the structure, notice key vocabulary, and ask better questions."
+    }
+  ]
+}

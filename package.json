@@ -15,6 +15,9 @@
     "clippy:api": "cargo clippy --workspace --all-targets -- -D warnings",
     "test:api": "cargo test --workspace",
     "test:api-smoke": "node scripts/api-smoke.mjs",
+    "test:tts-smoke": "node scripts/tts-smoke.mjs",
+    "test:arxiv-smoke": "node scripts/arxiv-smoke.mjs",
+    "test:learning-quality": "node scripts/learning-quality-fixtures.mjs",
     "test:web": "node scripts/frontend-smoke.mjs"
   },
   "workspaces": [

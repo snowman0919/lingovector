@@ -17,6 +17,7 @@ pub struct Config {
     pub supertone_local_voice_url: Option<String>,
     pub pronunciation_provider_url: Option<String>,
     pub arxiv_real_enabled: bool,
+    pub diagnostics_enabled: bool,
     pub llm_api_url: Option<String>,
     pub llm_api_key: Option<String>,
     pub llm_model: String,
@@ -76,6 +77,7 @@ impl Config {
                 .ok()
                 .filter(|v| !v.is_empty()),
             arxiv_real_enabled: env_bool("ARXIV_REAL_ENABLED", false),
+            diagnostics_enabled: env_bool("DIAGNOSTICS_ENABLED", false),
             llm_api_url: env::var("LLM_API_URL").ok().filter(|v| !v.is_empty()),
             llm_api_key: env::var("LLM_API_KEY").ok().filter(|v| !v.is_empty()),
             llm_model: env::var("LLM_MODEL").unwrap_or_else(|_| "gpt-4.1-mini".to_string()),
@@ -84,6 +86,10 @@ impl Config {
 
     pub fn is_development(&self) -> bool {
         self.environment == "development" || self.environment == "test"
+    }
+
+    pub fn diagnostics_allowed(&self) -> bool {
+        self.is_development() || self.diagnostics_enabled
     }
 }
 

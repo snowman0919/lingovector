@@ -75,3 +75,14 @@ export type ArxivRecommendation = {
   key_vocabulary: string[];
   writing_prompt: string;
 };
+
+export type ProviderDiagnostics = {
+  enabled: boolean;
+  environment: string;
+  providers: Array<{
+    name: string;
+    mode: "mock" | "configured" | "reachable" | "failed" | "disabled";
+    detail: string;
+    metadata: Record<string, unknown>;
+  }>;
+};

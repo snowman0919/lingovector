@@ -191,6 +191,7 @@ mod tests {
             supertone_local_voice_url: None,
             pronunciation_provider_url: None,
             arxiv_real_enabled: false,
+            diagnostics_enabled: false,
             llm_api_url: None,
             llm_api_key: None,
             llm_model: "test-model".to_string(),

@@ -181,3 +181,18 @@ pub struct ArxivRecommendation {
 pub struct OpenArxivRequest {
     pub id: String,
 }
+
+#[derive(Debug, Serialize)]
+pub struct ProviderDiagnosticsResponse {
+    pub enabled: bool,
+    pub environment: String,
+    pub providers: Vec<ProviderStatus>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProviderStatus {
+    pub name: String,
+    pub mode: String,
+    pub detail: String,
+    pub metadata: Value,
+}

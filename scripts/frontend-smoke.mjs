@@ -11,7 +11,8 @@ const checks = [
   [study.includes("Before") && study.includes("Revised Version"), "writing before/after display is rendered"],
   [api.includes("DELETE") && api.includes("/voices/"), "voice delete API client exists"],
   [types.includes("consent_version"), "voice consent version type exists"],
-  [study.includes("Voice cloning requires your explicit consent"), "voice consent warning exists"],
+  [study.includes("Cloned voices must not be used to impersonate others"), "voice consent warning exists"],
+  [study.includes("ProviderDiagnosticsPanel") && api.includes("/diagnostics/providers"), "dev provider diagnostics UI exists"],
 ];
 
 const failed = checks.filter(([ok]) => !ok);

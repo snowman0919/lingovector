@@ -82,6 +82,7 @@ pub trait PronunciationProvider: Send + Sync {
 #[async_trait]
 pub trait ArxivProvider: Send + Sync {
     async fn recommendations(&self) -> AppResult<Vec<ArxivRecommendation>>;
+    async fn cache_status(&self) -> Value;
     async fn find(&self, id: &str) -> AppResult<Option<ArxivRecommendation>> {
         Ok(self
             .recommendations()
@@ -607,11 +608,26 @@ impl ArxivProvider for MockArxivProvider {
     async fn recommendations(&self) -> AppResult<Vec<ArxivRecommendation>> {
         Ok(sample_arxiv())
     }
+
+    async fn cache_status(&self) -> Value {
+        json!({
+            "type": "mock",
+            "status": "static",
+            "entries": sample_arxiv().len(),
+            "source": "mock"
+        })
+    }
 }
 
 pub struct RealArxivProvider {
-    cache: RwLock<Option<(Instant, Vec<ArxivRecommendation>)>>,
+    cache: RwLock<Option<CachedArxiv>>,
     fallback: MockArxivProvider,
+}
+
+struct CachedArxiv {
+    created: Instant,
+    papers: Vec<ArxivRecommendation>,
+    source: &'static str,
 }
 
 impl RealArxivProvider {
@@ -641,33 +657,50 @@ impl ArxivProvider for RealArxivProvider {
     async fn recommendations(&self) -> AppResult<Vec<ArxivRecommendation>> {
         {
             let cache = self.cache.read().await;
-            if let Some((created, papers)) = &*cache {
-                if created.elapsed() < Duration::from_secs(60 * 60) {
-                    return Ok(papers.clone());
+            if let Some(cached) = &*cache {
+                if cached.created.elapsed() < Duration::from_secs(60 * 60) {
+                    return Ok(cached.papers.clone());
                 }
             }
         }
-        let fetched = match fetch_real_arxiv().await {
-            Ok(papers) if !papers.is_empty() => papers,
-            _ => self.fallback.recommendations().await?,
+        let (fetched, source) = match fetch_real_arxiv().await {
+            Ok(papers) if !papers.is_empty() => (papers, "real"),
+            _ => (self.fallback.recommendations().await?, "fallback"),
         };
-        *self.cache.write().await = Some((Instant::now(), fetched.clone()));
+        *self.cache.write().await = Some(CachedArxiv {
+            created: Instant::now(),
+            papers: fetched.clone(),
+            source,
+        });
         Ok(fetched)
+    }
+
+    async fn cache_status(&self) -> Value {
+        let cache = self.cache.read().await;
+        match &*cache {
+            Some(cached) => json!({
+                "type": "memory",
+                "status": "warm",
+                "entries": cached.papers.len(),
+                "age_seconds": cached.created.elapsed().as_secs(),
+                "ttl_seconds": 60 * 60,
+                "source": cached.source
+            }),
+            None => json!({
+                "type": "memory",
+                "status": "empty",
+                "entries": 0,
+                "ttl_seconds": 60 * 60,
+                "source": "none"
+            }),
+        }
     }
 }
 
 async fn fetch_real_arxiv() -> AppResult<Vec<ArxivRecommendation>> {
-    let categories = [
-        ("Security", "cat:cs.CR"),
-        ("AI", "cat:cs.AI"),
-        ("Robotics", "cat:cs.RO"),
-        ("Physics", "cat:physics.gen-ph"),
-        ("Chemistry", "cat:physics.chem-ph"),
-        ("Biology", "cat:q-bio.BM"),
-    ];
     let client = reqwest::Client::new();
     let mut papers = Vec::new();
-    for (category, query) in categories {
+    for (category, query) in ARXIV_CATEGORY_QUERIES {
         let xml = client
             .get("https://export.arxiv.org/api/query")
             .query(&[
@@ -891,8 +924,13 @@ fn required_string(value: &Value, key: &str) -> AppResult<String> {
 fn normalize_writing_scores(value: Value) -> Value {
     let mut scores = serde_json::Map::new();
     for key in WRITING_SCORE_KEYS {
-        let raw = value.get(key).and_then(Value::as_i64).unwrap_or(5);
-        scores.insert(key.to_string(), json!(raw.clamp(1, 10)));
+        let raw = value.get(key).and_then(Value::as_i64).unwrap_or(70);
+        let normalized = if (0..=10).contains(&raw) {
+            raw * 10
+        } else {
+            raw
+        };
+        scores.insert(key.to_string(), json!(normalized.clamp(0, 100)));
     }
     Value::Object(scores)
 }
@@ -937,6 +975,15 @@ const WRITING_SCORE_KEYS: [&str; 7] = [
     "Structure",
     "Clarity",
     "Naturalness",
+];
+
+pub const ARXIV_CATEGORY_QUERIES: [(&str, &str); 6] = [
+    ("Security", "cat:cs.CR"),
+    ("AI", "cat:cs.AI"),
+    ("Robotics", "cat:cs.RO"),
+    ("Physics", "cat:physics.gen-ph"),
+    ("Chemistry", "cat:physics.chem-ph"),
+    ("Biology", "cat:q-bio.BM"),
 ];
 
 fn guess_pos(word: &str) -> &'static str {
@@ -1081,6 +1128,19 @@ fn detect_korean_like(response: &str) -> Value {
     if lower.contains("many informations") {
         issues.push(json!({"phrase": "many informations", "suggestion": "much information / many pieces of information"}));
     }
+    if lower.contains("in my case") {
+        issues.push(json!({"phrase": "in my case", "suggestion": "Use personally / for me only when the sentence is truly personal."}));
+    }
+    if lower.contains("make me to") || lower.contains("makes people to") {
+        issues.push(json!({"phrase": "make ... to", "suggestion": "Use make + object + base verb: make me think / makes people notice."}));
+    }
+    if lower.contains("feel burden") {
+        issues
+            .push(json!({"phrase": "feel burden", "suggestion": "feel burdened / feel pressure"}));
+    }
+    if lower.contains("my thinking") {
+        issues.push(json!({"phrase": "my thinking", "suggestion": "my view / the way I think / my reasoning"}));
+    }
     json!(issues)
 }
 
@@ -1088,7 +1148,13 @@ fn revise_mock(response: &str) -> String {
     let revised = response
         .replace("many informations", "much information")
         .replace("important thing", "important issue")
-        .replace("I think that ", "");
+        .replace("I think that ", "")
+        .replace("In my case, ", "")
+        .replace("in my case, ", "")
+        .replace("make me to", "make me")
+        .replace("makes people to", "makes people")
+        .replace("feel burden", "feel burdened")
+        .replace("my thinking", "my view");
     if revised == response {
         format!("{} {}", response.trim(), "This point becomes stronger when it is connected to a concrete example and a clear consequence.")
     } else {
@@ -1197,6 +1263,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn arxiv_mock_fallback_reports_cache_status() {
+        let provider = MockArxivProvider;
+        let papers = provider.recommendations().await.unwrap();
+        let status = provider.cache_status().await;
+        assert_eq!(status["source"], "mock");
+        assert_eq!(status["entries"], papers.len());
+        assert!(papers
+            .iter()
+            .all(|paper| !paper.title.is_empty() && !paper.abstract_text.is_empty()));
+    }
+
+    #[tokio::test]
     async fn llm_provider_falls_back_to_mock_analysis() {
         let provider = OpenAiCompatibleLlmProvider {
             api_url: "http://127.0.0.1:9/v1/chat/completions".to_string(),
@@ -1225,8 +1303,8 @@ mod tests {
             .unwrap();
         for key in WRITING_SCORE_KEYS {
             let score = feedback.scores.get(key).and_then(Value::as_i64);
-            assert!(matches!(score, Some(1..=10)));
+            assert!(matches!(score, Some(0..=100)));
         }
-        assert!(feedback.korean_like_translation.as_array().unwrap().len() >= 2);
+        assert!(feedback.korean_like_translation.as_array().unwrap().len() >= 3);
     }
 }

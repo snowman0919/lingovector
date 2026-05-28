@@ -114,7 +114,7 @@ async fn main() -> anyhow::Result<()> {
         .map(|origin| origin.parse::<HeaderValue>())
         .collect::<Result<Vec<_>, _>>()?;
     let cors = CorsLayer::new()
-        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
         .allow_headers(tower_http::cors::Any)
         .allow_origin(origins);
 

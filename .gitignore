@@ -10,6 +10,7 @@ target/
 apps/api/storage/
 storage/
 apps/web/.next/
+local-output/
 
 .DS_Store
 *.log

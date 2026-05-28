@@ -1,4 +1,4 @@
-import type { ArxivRecommendation, Passage, TtsResult, User, VoiceProfile, WordInspect, WritingResult } from "./types";
+import type { ArxivRecommendation, Passage, ProviderDiagnostics, TtsResult, User, VoiceProfile, WordInspect, WritingResult } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8080";
 const TOKEN_KEY = "lingovector_token";
@@ -91,4 +91,8 @@ export async function arxivRecommendations(): Promise<ArxivRecommendation[]> {
 
 export async function openArxiv(id: string): Promise<Passage> {
   return request("/arxiv/open", { method: "POST", body: JSON.stringify({ id }) });
+}
+
+export async function providerDiagnostics(): Promise<ProviderDiagnostics> {
+  return request("/diagnostics/providers");
 }

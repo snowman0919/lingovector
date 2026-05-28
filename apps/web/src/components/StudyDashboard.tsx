@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   FilePlus2,
   Mic,
   Pause,
@@ -19,15 +20,18 @@ import {
   inspectWord,
   mediaUrl,
   openArxiv,
+  providerDiagnostics,
   scorePronunciation,
   submitWriting,
   synthesize,
   uploadVoice,
   writingPrompt,
 } from "@/lib/api";
-import type { ArxivRecommendation, Passage, Sentence, TtsResult, VoiceProfile, WordInspect, WritingResult } from "@/lib/types";
+import type { ArxivRecommendation, Passage, ProviderDiagnostics, Sentence, TtsResult, VoiceProfile, WordInspect, WritingResult } from "@/lib/types";
 
-type Tab = "audio" | "pronunciation" | "writing" | "arxiv";
+type Tab = "audio" | "pronunciation" | "writing" | "arxiv" | "diagnostics";
+
+const DIAGNOSTICS_VISIBLE = process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_DIAGNOSTICS_ENABLED === "true";
 
 export function StudyDashboard({
   passage,
@@ -112,7 +116,7 @@ export function StudyDashboard({
         <div className="panel-head">
           Practice
           <div className="bottom-tabs">
-            {(["audio", "pronunciation", "writing", "arxiv"] as Tab[]).map((item) => (
+            {(["audio", "pronunciation", "writing", "arxiv", ...(DIAGNOSTICS_VISIBLE ? ["diagnostics"] : [])] as Tab[]).map((item) => (
               <button key={item} className={`tab ${tab === item ? "active" : ""}`} onClick={() => setTab(item)}>
                 {item}
               </button>
@@ -124,6 +128,7 @@ export function StudyDashboard({
           {tab === "pronunciation" && selected ? <PronunciationPractice sentence={selected} /> : null}
           {tab === "writing" ? <WritingTutor passage={passage} /> : null}
           {tab === "arxiv" ? <ArxivLearning onPassage={onPassage} /> : null}
+          {tab === "diagnostics" && DIAGNOSTICS_VISIBLE ? <ProviderDiagnosticsPanel /> : null}
         </div>
       </section>
     </section>
@@ -352,7 +357,7 @@ function WritingTutor({ passage }: { passage: Passage }) {
             <div className="score-grid">
               {Object.entries(result.scores).map(([name, value]) => (
                 <div className="score-card" key={name}>
-                  <b>{name}</b> {value}/10
+                  <b>{name}</b> {value}/100
                 </div>
               ))}
             </div>
@@ -426,7 +431,7 @@ function ArxivLearning({ onPassage }: { onPassage: (passage: Passage) => void })
 
 export function VoiceConsentUploader() {
   const [file, setFile] = useState<File | null>(null);
-  const [consent, setConsent] = useState("I consent to using this voice sample only for my Lingovector study voice profile.");
+  const [consent, setConsent] = useState("I consent to using this voice sample only for my Lingovector study voice profile. I confirm this is my own voice or I have explicit permission to use it, and I will not use cloned voices to impersonate others.");
   const [profile, setProfile] = useState<VoiceProfile | null>(null);
   const [status, setStatus] = useState("");
 
@@ -449,7 +454,7 @@ export function VoiceConsentUploader() {
       <p className="mini-title">Voice Cloning</p>
       <div className="consent-box">
         <Upload size={18} />
-        <span>Voice cloning requires your explicit consent. Upload only your own voice; consent text and metadata are stored with the profile.</span>
+        <span>Voice cloning requires explicit consent. Upload only your own voice or a voice you have explicit permission to use. Cloned voices must not be used to impersonate others; consent text and metadata are stored with the profile.</span>
       </div>
       <div className="field">
         <label htmlFor="voice-file">Voice sample</label>
@@ -469,6 +474,47 @@ export function VoiceConsentUploader() {
       ) : null}
       {status ? <p>{status}</p> : null}
       {profile ? <pre>{JSON.stringify({ consent_version: profile.consent_version, metadata: profile.metadata }, null, 2)}</pre> : null}
+    </div>
+  );
+}
+
+function ProviderDiagnosticsPanel() {
+  const [diagnostics, setDiagnostics] = useState<ProviderDiagnostics | null>(null);
+  const [status, setStatus] = useState("");
+
+  async function load() {
+    setStatus("Loading diagnostics...");
+    try {
+      setDiagnostics(await providerDiagnostics());
+      setStatus("");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Diagnostics unavailable.");
+    }
+  }
+
+  return (
+    <div>
+      <div className="toolbar">
+        <button className="secondary" onClick={load}>
+          <Activity size={17} /> Check providers
+        </button>
+        {diagnostics ? <span>Environment: {diagnostics.environment}</span> : null}
+      </div>
+      {status ? <p className="right-panel-empty">{status}</p> : null}
+      {diagnostics ? (
+        <div className="provider-grid">
+          {diagnostics.providers.map((provider) => (
+            <article className="provider-card" key={provider.name}>
+              <div>
+                <p className="mini-title">{provider.name}</p>
+                <span className={`provider-mode ${provider.mode}`}>{provider.mode}</span>
+              </div>
+              <p>{provider.detail}</p>
+              <pre>{JSON.stringify(provider.metadata, null, 2)}</pre>
+            </article>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

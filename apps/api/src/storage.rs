@@ -79,3 +79,23 @@ fn mock_wav() -> Vec<u8> {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn voice_delete_removes_saved_file() {
+        let root = std::env::temp_dir().join(format!("lingovector-storage-{}", Uuid::new_v4()));
+        let storage = LocalStorage::new(root.clone());
+        let relative = storage
+            .save_bytes("voices", "sample.webm", b"consented voice sample bytes")
+            .await
+            .unwrap();
+        let full_path = storage.full_path(&relative);
+        assert!(fs::try_exists(&full_path).await.unwrap());
+        storage.delete(&relative).await.unwrap();
+        assert!(!fs::try_exists(&full_path).await.unwrap());
+        let _ = fs::remove_dir_all(root).await;
+    }
+}

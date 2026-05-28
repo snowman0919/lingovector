@@ -29,6 +29,13 @@ const login = await request("/auth/google", {
 const token = login.access_token;
 assert(token, "login did not return access token");
 
+const diagnostics = await request("/diagnostics/providers", {}, token);
+const allowedModes = new Set(["mock", "configured", "reachable", "failed", "disabled"]);
+for (const name of ["db", "auth", "llm", "tts", "voice_cloning", "pronunciation", "arxiv"]) {
+  const provider = diagnostics.providers?.find((item) => item.name === name);
+  assert(provider && allowedModes.has(provider.mode), `provider diagnostics missing ${name}`);
+}
+
 const passage = await request(
   "/passages/analyze",
   {
@@ -61,10 +68,11 @@ assert(tts.audio_url && tts.spoken_words?.length > 0, "tts did not return audio 
 
 const voiceForm = new FormData();
 voiceForm.append("name", "Smoke voice");
-voiceForm.append("consent_text", "I consent to using this voice sample only for my Lingovector study voice profile.");
+voiceForm.append("consent_text", "I consent to using this voice sample only for my Lingovector study voice profile. I confirm this is my own voice or I have explicit permission to use it, and I will not use cloned voices to impersonate others.");
 voiceForm.append("file", new Blob([new Uint8Array(128).fill(7)], { type: "audio/webm" }), "voice.webm");
 const voice = await request("/voices/upload", { method: "POST", body: voiceForm }, token);
 assert(voice.id && voice.consent_version, "voice upload did not return consent metadata");
+assert(voice.metadata?.warning?.includes("impersonate"), "voice upload warning metadata missing");
 
 const deleted = await request(`/voices/${voice.id}`, { method: "DELETE" }, token);
 assert(deleted.deleted === true, "voice delete failed");
@@ -94,6 +102,7 @@ const writing = await request(
   token,
 );
 assert(Object.keys(writing.scores ?? {}).length === 7, "writing score does not have seven dimensions");
+assert(Object.values(writing.scores).every((score) => Number.isInteger(score) && score >= 0 && score <= 100), "writing scores must be 0-100");
 assert(writing.original && writing.revised, "writing before/after fields missing");
 
 const papers = await request("/arxiv/recommendations", {}, token);

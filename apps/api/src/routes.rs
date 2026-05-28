@@ -10,6 +10,7 @@ use serde_json::{json, Value};
 use sqlx::Row;
 use uuid::Uuid;
 
+use crate::config::Config;
 use crate::{
     auth::{
         create_access_token, require_allowed_email, upsert_user, verify_google_id_token,
@@ -18,9 +19,9 @@ use crate::{
     dto::{
         AnalyzeRequest, ArxivRecommendation, DeleteVoiceResponse, LoginRequest, LoginResponse,
         OpenArxivRequest, PassageDto, PassageListItem, PassageRow, PronunciationResponse,
-        TtsRequest, TtsResponse, UserDto, VoiceProfileResponse, WordInspectRequest,
-        WordInspectResponse, WritingPromptRequest, WritingPromptResponse, WritingResponse,
-        WritingSubmitRequest,
+        ProviderDiagnosticsResponse, ProviderStatus, TtsRequest, TtsResponse, UserDto,
+        VoiceProfileResponse, WordInspectRequest, WordInspectResponse, WritingPromptRequest,
+        WritingPromptResponse, WritingResponse, WritingSubmitRequest,
     },
     error::{AppError, AppResult},
     AppState,
@@ -29,6 +30,7 @@ use crate::{
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route("/diagnostics/providers", get(provider_diagnostics))
         .route("/auth/google", post(login))
         .route("/me", get(me))
         .route("/passages", get(list_passages))
@@ -67,6 +69,27 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<Value>) {
             "database": {"ready": database_ready}
         })),
     )
+}
+
+async fn provider_diagnostics(
+    State(state): State<AppState>,
+    CurrentUser(_user): CurrentUser,
+) -> AppResult<Json<ProviderDiagnosticsResponse>> {
+    if !state.config.diagnostics_allowed() {
+        return Err(AppError::NotFound);
+    }
+    let database_ready = sqlx::query_scalar::<_, i32>("SELECT 1")
+        .fetch_one(&state.pool)
+        .await
+        .map(|value| value == 1)
+        .unwrap_or(false);
+    let arxiv_cache = state.arxiv.cache_status().await;
+    let providers = provider_statuses(&state.config, database_ready, arxiv_cache);
+    Ok(Json(ProviderDiagnosticsResponse {
+        enabled: true,
+        environment: state.config.environment.clone(),
+        providers,
+    }))
 }
 
 async fn login(
@@ -229,6 +252,11 @@ async fn tts(
         .tts
         .synthesize(&payload.text, payload.voice_id.as_deref(), &state.storage)
         .await?;
+    tracing::info!(
+        provider = %audio.provider,
+        word_count = audio.spoken_words.len(),
+        "tts synthesis completed"
+    );
     Ok(Json(TtsResponse {
         provider: audio.provider,
         audio_url: state.storage.public_url(&audio.storage_path),
@@ -294,7 +322,8 @@ async fn upload_voice(
         "original_filename": filename,
         "content_type": content_type,
         "byte_size": audio_bytes.len(),
-        "warning": "Voice cloning requires explicit user consent and should only use the user's own voice."
+        "consent_version": consent_version.clone(),
+        "warning": "Upload only your own voice or a voice you have explicit permission to use. Cloned voices must not be used to impersonate others."
     });
     sqlx::query(
         r#"
@@ -329,17 +358,15 @@ async fn delete_voice(
     CurrentUser(user): CurrentUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<DeleteVoiceResponse>> {
-    let row = sqlx::query(
-        "SELECT storage_path FROM voice_profiles WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
-    )
-    .bind(id)
-    .bind(user.id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or(AppError::NotFound)?;
+    let row = sqlx::query("SELECT storage_path FROM voice_profiles WHERE id = $1 AND user_id = $2")
+        .bind(id)
+        .bind(user.id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or(AppError::NotFound)?;
     let storage_path: String = row.get("storage_path");
     state.storage.delete(&storage_path).await?;
-    sqlx::query("UPDATE voice_profiles SET deleted_at = now() WHERE id = $1 AND user_id = $2")
+    sqlx::query("DELETE FROM voice_profiles WHERE id = $1 AND user_id = $2")
         .bind(id)
         .bind(user.id)
         .execute(&state.pool)
@@ -568,4 +595,236 @@ async fn record_review(
     .execute(&state.pool)
     .await?;
     Ok(())
+}
+
+fn provider_statuses(
+    config: &Config,
+    database_ready: bool,
+    arxiv_cache: Value,
+) -> Vec<ProviderStatus> {
+    vec![
+        provider_status(
+            "db",
+            if database_ready {
+                "reachable"
+            } else {
+                "failed"
+            },
+            if database_ready {
+                "PostgreSQL responded to SELECT 1"
+            } else {
+                "PostgreSQL did not respond to SELECT 1"
+            },
+            json!({ "kind": "postgres" }),
+        ),
+        provider_status(
+            "auth",
+            auth_mode(config),
+            auth_detail(config),
+            json!({
+                "allowed_domain": config.allowed_email_domain,
+                "dev_auth": config.dev_auth,
+                "google_client_id_configured": config.google_client_id.is_some()
+            }),
+        ),
+        provider_status(
+            "llm",
+            if config.llm_api_url.is_some() {
+                "configured"
+            } else {
+                "mock"
+            },
+            if config.llm_api_url.is_some() {
+                "OpenAI-compatible LLM endpoint is configured"
+            } else {
+                "Mock LLM provider is active"
+            },
+            json!({
+                "api_url_configured": config.llm_api_url.is_some(),
+                "api_key_configured": config.llm_api_key.is_some(),
+                "model": config.llm_model
+            }),
+        ),
+        provider_status(
+            "tts",
+            if config.supertone_local_tts_url.is_some() || config.supertone_api_key.is_some() {
+                "configured"
+            } else {
+                "mock"
+            },
+            if config.supertone_local_tts_url.is_some() {
+                "Supertone local TTS endpoint is configured"
+            } else if config.supertone_api_key.is_some() {
+                "Supertone API TTS credentials are configured"
+            } else {
+                "Mock TTS provider is active"
+            },
+            json!({
+                "local_url_configured": config.supertone_local_tts_url.is_some(),
+                "api_key_configured": config.supertone_api_key.is_some(),
+                "base_url_configured": !config.supertone_base_url.is_empty()
+            }),
+        ),
+        provider_status(
+            "voice_cloning",
+            if config.supertone_local_voice_url.is_some() || config.supertone_api_key.is_some() {
+                "configured"
+            } else {
+                "mock"
+            },
+            if config.supertone_local_voice_url.is_some() {
+                "Supertone local voice endpoint is configured"
+            } else if config.supertone_api_key.is_some() {
+                "Supertone API voice credentials are configured"
+            } else {
+                "Mock voice cloning provider is active"
+            },
+            json!({
+                "local_url_configured": config.supertone_local_voice_url.is_some(),
+                "api_key_configured": config.supertone_api_key.is_some()
+            }),
+        ),
+        provider_status(
+            "pronunciation",
+            if config.pronunciation_provider_url.is_some() {
+                "configured"
+            } else {
+                "mock"
+            },
+            if config.pronunciation_provider_url.is_some() {
+                "HTTP pronunciation scorer is configured"
+            } else {
+                "Mock pronunciation scorer is active"
+            },
+            json!({
+                "provider_url_configured": config.pronunciation_provider_url.is_some()
+            }),
+        ),
+        provider_status(
+            "arxiv",
+            arxiv_mode(config, &arxiv_cache),
+            arxiv_detail(config, &arxiv_cache),
+            json!({
+                "real_enabled": config.arxiv_real_enabled,
+                "categories": crate::providers::ARXIV_CATEGORY_QUERIES
+                    .iter()
+                    .map(|(category, query)| json!({ "category": category, "query": query }))
+                    .collect::<Vec<_>>(),
+                "cache": arxiv_cache
+            }),
+        ),
+    ]
+}
+
+fn provider_status(name: &str, mode: &str, detail: &str, metadata: Value) -> ProviderStatus {
+    ProviderStatus {
+        name: name.to_string(),
+        mode: mode.to_string(),
+        detail: detail.to_string(),
+        metadata,
+    }
+}
+
+fn auth_mode(config: &Config) -> &'static str {
+    if config.dev_auth || config.google_client_id.is_some() {
+        "configured"
+    } else if config.is_development() {
+        "disabled"
+    } else {
+        "failed"
+    }
+}
+
+fn auth_detail(config: &Config) -> &'static str {
+    if config.dev_auth {
+        "DEV_AUTH local login is enabled"
+    } else if config.google_client_id.is_some() {
+        "Google OAuth ID token verification is configured"
+    } else if config.is_development() {
+        "Google OAuth is not configured and DEV_AUTH is disabled"
+    } else {
+        "Google OAuth must be configured outside development"
+    }
+}
+
+fn arxiv_mode(config: &Config, cache: &Value) -> &'static str {
+    if !config.arxiv_real_enabled {
+        return "mock";
+    }
+    match cache.get("source").and_then(Value::as_str) {
+        Some("real") => "reachable",
+        Some("fallback") => "failed",
+        _ => "configured",
+    }
+}
+
+fn arxiv_detail(config: &Config, cache: &Value) -> &'static str {
+    if !config.arxiv_real_enabled {
+        return "Mock arXiv recommendations are active";
+    }
+    match cache.get("source").and_then(Value::as_str) {
+        Some("real") => "Real arXiv fetch succeeded and is cached",
+        Some("fallback") => "Real arXiv fetch failed; mock fallback is cached",
+        _ => "Real arXiv fetch is enabled; cache has not been warmed yet",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{net::SocketAddr, path::PathBuf};
+
+    fn test_config() -> Config {
+        Config {
+            bind_addr: "127.0.0.1:0".parse::<SocketAddr>().unwrap(),
+            database_url: "postgres://example".to_string(),
+            jwt_secret: "test-secret".to_string(),
+            allowed_email_domain: "dimigo.hs.kr".to_string(),
+            google_client_id: None,
+            dev_auth: true,
+            cors_origins: vec!["http://localhost:3000".to_string()],
+            storage_dir: PathBuf::from("./storage-test"),
+            environment: "test".to_string(),
+            supertone_api_key: None,
+            supertone_base_url: "https://api.supertone.ai".to_string(),
+            supertone_local_tts_url: None,
+            supertone_local_voice_url: None,
+            pronunciation_provider_url: None,
+            arxiv_real_enabled: false,
+            diagnostics_enabled: false,
+            llm_api_url: None,
+            llm_api_key: None,
+            llm_model: "test-model".to_string(),
+        }
+    }
+
+    #[test]
+    fn provider_status_reports_mock_and_reachable_without_secrets() {
+        let config = test_config();
+        let statuses = provider_statuses(
+            &config,
+            true,
+            json!({"type": "mock", "status": "static", "entries": 6, "source": "mock"}),
+        );
+        let db = statuses.iter().find(|item| item.name == "db").unwrap();
+        assert_eq!(db.mode, "reachable");
+        let tts = statuses.iter().find(|item| item.name == "tts").unwrap();
+        assert_eq!(tts.mode, "mock");
+        assert!(tts.metadata.get("api_key").is_none());
+    }
+
+    #[test]
+    fn arxiv_real_fallback_is_reported_as_failed_with_cache_metadata() {
+        let mut config = test_config();
+        config.arxiv_real_enabled = true;
+        let statuses = provider_statuses(
+            &config,
+            true,
+            json!({"type": "memory", "status": "warm", "entries": 6, "source": "fallback"}),
+        );
+        let arxiv = statuses.iter().find(|item| item.name == "arxiv").unwrap();
+        assert_eq!(arxiv.mode, "failed");
+        assert_eq!(arxiv.metadata["cache"]["source"], "fallback");
+        assert_eq!(arxiv.metadata["categories"].as_array().unwrap().len(), 6);
+    }
 }
